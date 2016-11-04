@@ -1,10 +1,11 @@
 # *******************************************************************
 # ** Name:          UFED tag images by hash
-# ** Version:       v1.2
+# ** Version:       v1.3
 # ** Purpose:       A short script to open exported CSV separated export from NetClean of categorised images including MD5 value.
 #					The script will iterate through each image file witin an extraction and tag those images located.
 #    11/05/2016      - Amended purpose to include writing HTML report.
 #    20/05/2016		 - Amended coding to include PIL and to produce thumbs rather than original images in report 
+#    30/08/2016      - Changed reference to PIL to CLR Image as UFED Python uses IronPython 2.6 and PIL not supported.
 # ** Returns:       None - file located and not-located or duplicates will be logged.
 # ** Variables:     N/A
 # ** Author:        Matthew KELLY
@@ -13,7 +14,7 @@
 # ** WishList:		Form function to select report location, defaulting to current folder
 # **				Add functionality to form to request file-data information for report.
 # **				Error logging - try/catch in main()?
-# **				Export clsHTMLWriter to separate module for generic use.
+# **                Export clsHTMLWriter to separate module for generic use.
 # ******************************************************************
 
 # # # Imports # # #
@@ -21,7 +22,11 @@
 
 # from physical import *
 import os
-from PIL import Image
+import hashlib
+import clr
+from System.Drawing import Image
+# contains IntPtr type
+from System import IntPtr
 
 # # # function definitions # # # 
 
@@ -53,7 +58,7 @@ def main():
     objHTMLWrite = clsHTMLWriter()
     iLineCount = 1
     for eachLine in objCSVFile:
-        # split the contents of eachline using ',' deliminator. Category is first, MD5 second.
+        # split the contents of eachline using ',' deliminator. 
         eachLineSplit = eachLine.split(',')
         # read first line and locate at what index the HASH value is stored for comparison
         if iLineCount == 1:
@@ -67,18 +72,33 @@ def main():
             # Iterate through each image and locate matching MD5 values
             eachLineSplit[iHASHIndex] = eachLineSplit[iHASHIndex].lower()
             for eachImage in objImageFiles:
-                if eachImage.Md5  == eachLineSplit[iHASHIndex].strip():
-                    print( 'Match!' )
+                strMD5 = eachImage.Md5
+                if strMD5 == '':
+                    strMD5 = getMd5HashValue(eachImage)
+                if strMD5  == eachLineSplit[iHASHIndex].strip():
+                    print( 'Match!' + strMD5 )
                     # save image to images location
-                    exportUFEDFile(eachImage, sExportReportLoc + sImagesRelLoc)
+                    try:
+                        exportUFEDFile(eachImage, sExportReportLoc + sImagesRelLoc)
+                    except:
+                        print('Error writing file!')
                     # 19/07/2016 - code for PIL indescrepencies.
-					# objImageFile = PIL.Image.open( sExportReportLoc + sImagesRelLoc + '/' + eachImage.Name )
-					# objImageFile.open(sExportReportLoc + sImagesRelLoc + '/' + eachImage.Name)
+                    # objImageFile = PIL.Image.open( sExportReportLoc + sImagesRelLoc + '/' + eachImage.Name )
+                    # objImageFile.open(sExportReportLoc + sImagesRelLoc + '/' + eachImage.Name)
                     # shrink image to specified size and then display this thumbnail in report and reference full sized image
-                    # objThumbImage = resizeImage(objImageFile)
-                    # objThumbImage.save(sExportReportLoc + sThumbRelLoc + '/' + objImage.Name)
-                    # objThumbImage.close
-                    # objImageFile.Close
+                    # 30/08/2016 PIL will not work as UFED uses IronPython. Use CLR Image instead
+                    objImageFile = Image.FromFile(sExportReportLoc + sImagesRelLoc + '\\' + eachImage.Name)
+                    objThumbImage = resizeImage(objImageFile)
+                    print (sExportReportLoc + sThumbRelLoc + '\\' + eachImage.Name)
+                    
+                    try:
+                        objThumbImage.Save(sExportReportLoc + sThumbRelLoc + '\\' + eachImage.Name)
+                    except:
+                         print('error creating thumbnail')
+                         
+                    objThumbImage.Dispose
+                    objImageFile.Dispose
+
                     sThumbName = eachImage.Name
                     # add relative path to HTML
                     objHTMLWrite.AddImageLocationReference(eachLineSplit[iCategoryIndex], sImagesRelLoc + '\\' + sThumbName, sImagesRelLoc + '\\' + eachImage.Name)
@@ -98,18 +118,36 @@ def main():
     objHTMLWrite.WriteHTMLtoFile(sExportReportLoc + '\\' + sReportName)
 
 def resizeImage (r_objImage):
-	xTo, yTo = 300, 400
-	xNow, yNow = r_objImage.Width, r_objImage.Height
-	if xNow <= xTo and yNow <= yTo:
-		return ''
-	else:
-		pX = xNow / xTo
-		pY = yNow / yTo
-		if pX > pY:
-			objResizeImage = r_objImage.resize( int(xNow / pX), int(yNow / pX) )
-		else:
-			objResizeImage = r_objImage.resize( int(xNow / pY), int(yNow / pY) )
-		return objResizeImage
+    xTo, yTo = 100, 100
+    xNow, yNow = r_objImage.Width, r_objImage.Height
+    if xNow <= xTo and yNow <= yTo:
+        objResizeImage = r_objImage
+        return objResizeImage
+    else:
+        pX = xNow / xTo
+        pY = yNow / yTo
+        objThumnailImageAbort = r_objImage.GetThumbnailImageAbort(ThumbnailCallBack)
+        if pX > pY:
+            objResizeImage = r_objImage.GetThumbnailImage ( int(xNow / pX), int(yNow / pX), objThumnailImageAbort, IntPtr(0))
+        else:
+            objResizeImage = r_objImage.GetThumbnailImage ( int(xNow / pY), int(yNow / pY), objThumnailImageAbort, IntPtr(0) )
+        return objResizeImage 
+
+def ThumbnailCallBack():
+    return False
+
+def getMd5HashValue (r_objImageFile):
+
+    #print (objImageFile.ToString())
+    hash = hashlib.md5()
+    try:
+        rd = r_objImageFile.read()
+        hash.update(rd)
+        hexMD5 = hash.hexdigest()
+        return hexMD5.upper
+    except:
+        return ''
+    
 
 # *******************************************************************
 # ** Name:          exportUFEDFile
@@ -170,7 +208,7 @@ class clsHTMLWriter:
 
     def AddTableContentByKeyAsLists(self, v_sKey, v_sTableContent):
         # nested dictionary for each Category image
-		# 19/07/2016 - added code for if v_sKey does not exist
+        # 19/07/2016 - added code for if v_sKey does not exist
         sHTMLBuiltString = self.__sBuildHTMLTableRowString(v_sTableContent)
         self.__AddToDicCategories(v_sKey, sHTMLBuiltString)
      
