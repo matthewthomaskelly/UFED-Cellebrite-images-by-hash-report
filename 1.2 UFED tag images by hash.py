@@ -10,14 +10,18 @@
 # ** Author:        Matthew KELLY
 # ** Date:          06/05/2015
 # ** Revisions:     none
+# ** WishList:		Form function to select report location, defaulting to current folder
+# **				Add functionality to form to request file-data information for report.
+# **				Error logging - try/catch in main()?
+# **				Export clsHTMLWriter to separate module for generic use.
 # ******************************************************************
 
-# Imports
+# # # Imports # # #
+#import json
+
+# from physical import *
 import os
 from PIL import Image
-
-# # # Start of script  # # #
-main()
 
 # # # function definitions # # # 
 
@@ -32,12 +36,13 @@ main()
 # ** Revisions:     none
 # ******************************************************************
 def main():
+
     # Get location of CSV file and path for log file
     # 06/05/2016 hard coded at this point
     sCSVFileLoc = 'C:\\mtk\\DFU-184-2016 RM-1 Illegal Files 10052016.csv'
     sExportReportLoc = 'C:\\mtk\\Report'
-    sImagesRelLoc = '.\Images'
-    sThumbRelLoc = '.\Thumbs'
+    sImagesRelLoc = '\\Images'
+    sThumbRelLoc = '\\Thumbs'
     sReportName = 'report.html'
 
     # class 'Images' of Data Files
@@ -46,71 +51,96 @@ def main():
     # Open CSV file and locate column linked to MD5 values
     objCSVFile = open(sCSVFileLoc)
     objHTMLWrite = clsHTMLWriter()
-
+    iLineCount = 1
     for eachLine in objCSVFile:
         # split the contents of eachline using ',' deliminator. Category is first, MD5 second.
         eachLineSplit = eachLine.split(',')
-        #print(eachLineSplit[0] + ' ' + eachLineSplit[1])
-        # Iterate through each image and locate matching MD5 values
-        for eachImage in objImageFiles:
-            eachLineSplit[1] = eachLineSplit[1].lower()
-            if eachImage.Md5  == eachLineSplit[1].strip():
-                # save image to images location
-                exportUFEDFile(eachImage, sExportReportLoc + sImagesRelLoc)
-                objImageFile = Image
-                objImageFile.open(sExportReportLoc + sImagesRelLoc + '/' + eachImage.Name)
-                # shrink image to specified size and then display this thumbnail in report and reference full sized image
-                objThumbImage = resizeImage(objImageFile)
-                objThumbImage.save(sExportReportLoc + sThumbRelLoc + '/' + objImage.Name)
-                objThumbImage.close
-                objImageFile.Close
-                # add relative path to HTML
-                objHTMLWrite.AddImageLocationReference(eachLineSplit[0], sThumbRelLoc + '\\' + sThumbName, sImagesRelLoc + '\\' + eachImage.Name)
-                # add file information to table content
-                lstDetails = [eachImage.Name, eachImage.Md5]
-                objHTMLWrite.AddTableContentByKeyAsLists( eachLineSplit[0], lstDetails )
+        # read first line and locate at what index the HASH value is stored for comparison
+        if iLineCount == 1:
+            print( 'Getting Index Values' )
+            iLen = len(eachLineSplit)
+            eachLineSplit[iLen-1] = eachLineSplit[iLen-1].strip()
+            iHASHIndex = eachLineSplit.index('Hash Value')
+            iCategoryIndex = eachLineSplit.index('Category')
+        else:
+            print( 'Getting matching Hashes Index' )
+            # Iterate through each image and locate matching MD5 values
+            eachLineSplit[iHASHIndex] = eachLineSplit[iHASHIndex].lower()
+            for eachImage in objImageFiles:
+                if eachImage.Md5  == eachLineSplit[iHASHIndex].strip():
+                    print( 'Match!' )
+                    # save image to images location
+                    exportUFEDFile(eachImage, sExportReportLoc + sImagesRelLoc)
+                    # 19/07/2016 - code for PIL indescrepencies.
+					# objImageFile = PIL.Image.open( sExportReportLoc + sImagesRelLoc + '/' + eachImage.Name )
+					# objImageFile.open(sExportReportLoc + sImagesRelLoc + '/' + eachImage.Name)
+                    # shrink image to specified size and then display this thumbnail in report and reference full sized image
+                    # objThumbImage = resizeImage(objImageFile)
+                    # objThumbImage.save(sExportReportLoc + sThumbRelLoc + '/' + objImage.Name)
+                    # objThumbImage.close
+                    # objImageFile.Close
+                    sThumbName = eachImage.Name
+                    # add relative path to HTML
+                    objHTMLWrite.AddImageLocationReference(eachLineSplit[iCategoryIndex], sImagesRelLoc + '\\' + sThumbName, sImagesRelLoc + '\\' + eachImage.Name)
+                    # add file information to table content
+                    lstDetails = [eachImage.Name, eachImage.Md5]
+                    objHTMLWrite.AddTableContentByKeyAsLists( eachLineSplit[iCategoryIndex], lstDetails )
+
+        print( str(iLineCount) + ' ' + eachLineSplit[iHASHIndex] )
+        iLineCount += 1
         # No match - log?
        
     # close CSV file
     objCSVFile.close()
 
     # Write built HTML stream to file location
-    print(sExportReportLoc + sReportName)
+    print(sExportReportLoc + '\\' +  sReportName)
     objHTMLWrite.WriteHTMLtoFile(sExportReportLoc + '\\' + sReportName)
 
-def resizeImage(r_objImage):
-    xTo, yTo = 300, 400
-    xNow, yNow = r_objImage.Width, r_objNow.Height
-    if xNow <= xTo and yNow <= yTo:
-        return ''
-    else:
-        pX = xNow / xTo
-        pY = yNow / yTo
-        if pX > pY:
-            objResizeImage = r_objImage.resize((int(xNow / pX)), int(yNow / pX))
-        else:
-            objResizeImage = r_objImage.resize((int(xNow / pY)), int(yNow / pY)
-        return objResizeImage
-            
+def resizeImage (r_objImage):
+	xTo, yTo = 300, 400
+	xNow, yNow = r_objImage.Width, r_objImage.Height
+	if xNow <= xTo and yNow <= yTo:
+		return ''
+	else:
+		pX = xNow / xTo
+		pY = yNow / yTo
+		if pX > pY:
+			objResizeImage = r_objImage.resize( int(xNow / pX), int(yNow / pX) )
+		else:
+			objResizeImage = r_objImage.resize( int(xNow / pY), int(yNow / pY) )
+		return objResizeImage
+
+# *******************************************************************
+# ** Name:          exportUFEDFile
+# ** Purpose:       Takes an Image from ds in UFED Cellebrite and exports to file-path specified
+# ** Author:        Unknown - MET Police
+# ** Date:          
+# ** Revisions:     06/05/2016 - removed hash library reference
+# ****************************************************************** 
 def exportUFEDFile(pic,path):
+        print(path)
         fileDataReadsize = 2**25
         fileSize = pic.Size
         if (fileSize > 2113929216):
                 MessageBox.Show("%s is greater than 2GB, please review manually. Filename stored in trace window" % (pic.Name),"Error")
                 print ("File %s is over 2gb in size, review manually" % (pic.Name))
                 return "", ""
-       # m = hashlib.md5()
+        # mtk 06/05/2016 
+        # m = hashlib.md5()
         filename = pic.Name 
         filePath = os.path.join(path,filename)
         ext = os.path.splitext(pic.Name)[1]
         locateInvalidChar = ext.find("?")
         if (locateInvalidChar != -1):
                 ext = ext[:locateInvalidChar]
+        print(filePath)
         f = open(filePath,'wb')
         pic.seek(0)
         filedata = pic.read(fileDataReadsize)
         while len(filedata) > 0:
-                #m.update(filedata)
+                # mtk 06/05/2016
+                # m.update(filedata)
                 f.write(filedata)
                 filedata = pic.read(fileDataReadsize)
         pic.seek(0)
@@ -118,16 +148,16 @@ def exportUFEDFile(pic,path):
 
 
 
-
 # # # class definitions # # # 
+
 # *******************************************************************
 # ** Name:          clsHTMLWriter
-# ** Purpose:       A short script to open exported CSV separated export from NetClean of categorised images including MD5 value.
-#					The script will iterate through each image file witin an extraction and tag those images located.
-#    11/05/2016      - Amended purpose to include writing HTML report.
+# ** Purpose:       A class to store HTML data in tables by Category stored in a dictionary for each Category.
+#                   Includes a function to write HTML page at conclusion to specified location for report.
 # ** Author:        Matthew KELLY
 # ** Date:          11/05/2015
-# ** Revisions:     none
+# ** Revisions:     19/07/2016 - amended functions AddTableContentByKeyAsLists() and AddImageLocationReference() to include private
+#                    function call __AddToDicCategories() that checks whether dictionary key exists before adding to Category dictionary
 # ******************************************************************
 class clsHTMLWriter:
 
@@ -138,28 +168,20 @@ class clsHTMLWriter:
     def AddHeadingTitle(self, v_sHeading):
         self.__sHeading = v_sHeading
 
-    def AddTableContentByKeyAsLists(self, v_sKey, *v_sTableContent):
+    def AddTableContentByKeyAsLists(self, v_sKey, v_sTableContent):
         # nested dictionary for each Category image
+		# 19/07/2016 - added code for if v_sKey does not exist
         sHTMLBuiltString = self.__sBuildHTMLTableRowString(v_sTableContent)
-        self.__dicCategories[v_sKey] += sHTMLBuiltString
+        self.__AddToDicCategories(v_sKey, sHTMLBuiltString)
      
-
     def AddImageLocationReference(self, v_sKey, v_sThumbRelativeLocation, v_sImageRelativeLocation = ''):
-        sHTMLBuiltString = '<TR><TD>'
-        sHTMLBuiltString += '<IMAGE src="' + v_sThumbRelativeLocation + ' href:=' + v_sImageRelativeLocation + '>')
-        sHTMLBuiltString += '</TD></TR>'
-        self.__dicCategories[v_sKey] += sHTMLBuiltString
-
-            
-    # private function
-    def __sBuildHTMLTableRowString(self, *v_sTableContent):
-        sHTMLBuiltString = '<TR>'
-        for sTableContent in v_sTableContent:
-            sTableContent = '<TD>' + str(sTableContent) + '</TD>'
-            sHTMLBuiltString += str(sTableContent)
-            sHTMLBuiltString += '</TR>'
-        return (sHTMLBuiltString)
-
+        sHTMLBuiltString = '<TR><TD><A href=.' + v_sImageRelativeLocation
+        if v_sImageRelativeLocation != '':
+            sHTMLBuiltString += '<A href=.' + v_sImageRelativeLocation
+        sHTMLBuiltString += '<IMAGE src=.' + v_sThumbRelativeLocation + '>'
+        sHTMLBuiltString += '</A></TD></TR>'
+        self.__AddToDicCategories(v_sKey, sHTMLBuiltString)
+    
     def WriteHTMLtoFile(self, v_sFileLocation):
         #print(v_sFileLocation)
         filestream = open(v_sFileLocation, 'w')
@@ -173,3 +195,23 @@ class clsHTMLWriter:
         sHTML += '</HTML>'
         filestream.write(sHTML)
         filestream.close()
+
+    # private functions
+    def __sBuildHTMLTableRowString(self, v_sTableContent):
+        sHTMLBuiltString = '<TR>'
+        for sTableContent in v_sTableContent:
+            print(sTableContent)
+            sTableContent = '<TD>' + str(sTableContent) + '</TD>'
+            sHTMLBuiltString += str(sTableContent)
+            sHTMLBuiltString += '</TR>'
+        return (sHTMLBuiltString)
+
+    def __AddToDicCategories(self, v_sKey, v_sHTMLBuiltString):
+        if v_sKey in self.__dicCategories:
+            self.__dicCategories[v_sKey] += v_sHTMLBuiltString
+        else:
+            self.__dicCategories[v_sKey] = v_sHTMLBuiltString
+
+
+# # # Start of script  # # #
+main()
