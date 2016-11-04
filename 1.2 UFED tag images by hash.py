@@ -1,18 +1,18 @@
 # *******************************************************************
 # ** Name:          UFED tag images by hash
-# ** Version:       v1.3
+# ** Version:       v1.4
 # ** Purpose:       A short script to open exported CSV separated export from NetClean of categorised images including MD5 value.
 #					The script will iterate through each image file witin an extraction and tag those images located.
 #    11/05/2016      - Amended purpose to include writing HTML report.
 #    20/05/2016		 - Amended coding to include PIL and to produce thumbs rather than original images in report 
-#    30/08/2016      - Changed reference to PIL to CLR Image as UFED Python uses IronPython 2.6 and PIL not supported.
+#    30/08/2016      - 1.3 - Changed reference to PIL to CLR Image as UFED Python uses IronPython 2.6 and PIL not supported.
+#    21/09/2016      - 1.4 - Form function to select report location and CSV file location
 # ** Returns:       None - file located and not-located or duplicates will be logged.
 # ** Variables:     N/A
 # ** Author:        Matthew KELLY
 # ** Date:          06/05/2015
 # ** Revisions:     none
-# ** WishList:		Form function to select report location, defaulting to current folder
-# **				Add functionality to form to request file-data information for report.
+# ** WishList:		Add functionality to form to request file-data information for report.
 # **				Error logging - try/catch in main()?
 # **                Export clsHTMLWriter to separate module for generic use.
 # ******************************************************************
@@ -24,7 +24,10 @@
 import os
 import hashlib
 import clr
-from System.Drawing import Image
+clr.AddReference("System.Windows.Forms")
+from System.Windows.Forms import *
+from System.Drawing import *
+
 # contains IntPtr type
 from System import IntPtr
 
@@ -44,8 +47,13 @@ def main():
 
     # Get location of CSV file and path for log file
     # 06/05/2016 hard coded at this point
-    sCSVFileLoc = 'C:\\mtk\\DFU-184-2016 RM-1 Illegal Files 10052016.csv'
-    sExportReportLoc = 'C:\\mtk\\Report'
+    #sCSVFileLoc = strSelectFile()
+    #sExportReportLoc = strSelectFolder()
+    frmMain = IForm()
+    Application.Run(frmMain)
+    sCSVFileLoc = frmMain.FolderPath
+
+    #sExportReportLoc = strSelectFolder()
     sImagesRelLoc = '\\Images'
     sThumbRelLoc = '\\Thumbs'
     sReportName = 'report.html'
@@ -148,6 +156,24 @@ def getMd5HashValue (r_objImageFile):
     except:
         return ''
     
+def strSelectFolder():
+    dialog = FolderBrowserDialog()
+    if ( dialog.ShowDialog() == DialogResult.OK):
+        return dialog.SelectedPath
+
+def strSelectFile():
+    dialog = OpenFileDialog()
+    dialog.Filter = "CSV files (*.csv)|*.csv"
+    if ( dialog.ShowDialog() == DialogResult.OK ):
+        return dialog.FileName
+
+class IForm(Form):
+        def __init__(self):
+                dialog = FolderBrowserDialog()
+                if ( dialog.ShowDialog() == DialogResult.OK):
+                    self.FolderPath = dialog.SelectedPath
+                pass
+
 
 # *******************************************************************
 # ** Name:          exportUFEDFile
