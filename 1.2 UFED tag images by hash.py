@@ -47,20 +47,10 @@ from System import IntPtr
 def main():
 
     # Get location of CSV file and path for log file
-    # 06/05/2016 hard coded at this point
-    #sCSVFileLoc = strSelectFile()
     frmCSVFolder = IForm()
-    frmCSVFolder.AddHeading("Please enter full pathname location for CSV values")
-    frmCSVFolder.AddPathTitle( os.getcwd() )
     Application.Run( frmCSVFolder )
-    sCSVFileLoc = frmCSVFolder.pathName
-
-    #sExportReportLoc = strSelectFolder()
-    frmReportFolder = IForm()
-    frmReportFolder.AddHeading("Please select location for Report")
-    frmReportFolder.AddPathTitle( os.getcwd() )
-    Application.Run( frmReportFolder )
-    sExportReportLoc = frmReportFolder.pathName
+    sCSVFileLoc = frmCSVFolder.CSVfilepathname
+    sExportReportLoc = frmCSVFolder.folderpathname
 
     sImagesRelLoc = '\\Images'
     sThumbRelLoc = '\\Thumbs'
@@ -68,44 +58,47 @@ def main():
 
     # class 'Images' of Data Files
     objImageFiles = ds.DataFiles['Image']
+    
+    # HTML parser attempt, could do with some work!
+    objHTMLWrite = clsHTMLWriter()
+
     # Open specified CSV file
     # Open CSV file and locate column linked to MD5 values
-    objCSVFile = open(sCSVFileLoc)
-    objHTMLWrite = clsHTMLWriter()
+    objCSVFile = open( sCSVFileLoc )
+    
+    # first line is the headings
     iLineCount = 1
     for eachLine in objCSVFile:
+
         # split the contents of eachline using ',' deliminator. 
         eachLineSplit = eachLine.split(',')
+
         # read first line and locate at what index the HASH value is stored for comparison
         if iLineCount == 1:
-            print( 'Getting Index Values' )
             iLen = len(eachLineSplit)
             eachLineSplit[iLen-1] = eachLineSplit[iLen-1].strip()
             iHASHIndex = eachLineSplit.index('Hash Value')
             iCategoryIndex = eachLineSplit.index('Category')
         else:
-            print( 'Getting matching Hashes Index' )
-            # Iterate through each image and locate matching MD5 values
+            # convert HASH value to lowercase for match in UFED reader
             eachLineSplit[iHASHIndex] = eachLineSplit[iHASHIndex].lower()
+            # Iterate through each image and locate matching MD5 values
             for eachImage in objImageFiles:
                 strMD5 = eachImage.Md5
                 if strMD5 == '':
                     strMD5 = getMd5HashValue(eachImage)
+
                 if strMD5  == eachLineSplit[iHASHIndex].strip():
-                    print( 'Match! ' + strMD5 )
                     # save image to images location
                     try:
                         exportUFEDFile(eachImage, sExportReportLoc + sImagesRelLoc)
                     except:
                         print('Error writing file!')
-                    # 19/07/2016 - code for PIL indescrepencies.
-                    # objImageFile = PIL.Image.open( sExportReportLoc + sImagesRelLoc + '/' + eachImage.Name )
-                    # objImageFile.open(sExportReportLoc + sImagesRelLoc + '/' + eachImage.Name)
+
                     # shrink image to specified size and then display this thumbnail in report and reference full sized image
                     # 30/08/2016 PIL will not work as UFED uses IronPython. Use CLR Image instead
                     objImageFile = Image.FromFile(sExportReportLoc + sImagesRelLoc + '\\' + eachImage.Name)
                     objThumbImage = resizeImage(objImageFile)
-                    print (sExportReportLoc + sThumbRelLoc + '\\' + eachImage.Name)
                     
                     try:
                         objThumbImage.Save(sExportReportLoc + sThumbRelLoc + '\\' + eachImage.Name + '.png')
@@ -119,12 +112,11 @@ def main():
                     # add relative path to HTML
                     sFullThumbPath = sThumbRelLoc + '\\' + sThumbName
                     sFullImagePath = sImagesRelLoc  + '\\' + eachImage.Name
-                    objHTMLWrite.AddImageLocationReference( eachLineSplit[iCategoryIndex], sFullThumbPath, sFullImagePath)
-                    # add file information to table content
-                    lstDetails = ['Name: ' + eachImage.Name, 'Path@ ' + eachImage.Folder, 'Creation date: ' + eachImage.CreationTime, 'MD5: ' + eachImage.Md5 ]
-                    objHTMLWrite.AddTableContentByKeyAsLists( eachLineSplit[iCategoryIndex], lstDetails )
 
-        print( str(iLineCount) + ' ' + eachLineSplit[iHASHIndex] )
+                    # add file information to table content
+                    lstDetails = ['Name: ' + eachImage.Name, 'Path@ ' + eachImage.Folder, 'Creation date: ' + str(eachImage.CreationTime), 'MD5: ' + eachImage.Md5 ]
+                    objHTMLWrite.AddTableContentByKeyAsLists( eachLineSplit[iCategoryIndex], sFullThumbPath, sFullImagePath, lstDetails )
+
         iLineCount += 1
         # No match - log?
        
@@ -133,7 +125,7 @@ def main():
 
     # Write built HTML stream to file location
     print(sExportReportLoc + '\\' +  sReportName)
-    objHTMLWrite.WriteHTMLtoFile(sExportReportLoc + '\\' + sReportName)
+    objHTMLWrite.WriteHTMLtoFile(sExportReportLoc + '\\' + sReportName, 4)
 
 # *******************************************************************
 # ** Name:          resizeImage
@@ -215,49 +207,55 @@ def strSelectFile():
 class IForm(Form):
 
         def __init__(self):
-                self.Text = "Select Path"
-                self.Height = 100
+                self.Text = "Select CSV file and report folder locations"
+                self.Height = 150
+                self.Width = 500
 
                 #add button
                 self.button1 = Button()
                 self.button1.Text = "&OK"
-                self.button1.Location = Point(10, 35)
+                self.button1.Location = Point(10, 60)
                 self.button1.Click += self.OKPressed
 
-                #add textbox
-                self.textbox = TextBox()
-                self.textbox.Text = "Path goes here"
-                self.textbox.Location = Point(10,10)
-                self.textbox.Width = 250
+                #add textbox for CSV file
+                self.textboxfile = TextBox()
+                self.textboxfile.Text = "CSV file location goes here"
+                self.textboxfile.Location = Point(10,10)
+                self.textboxfile.Width = 450
 
-                self.Controls.Add(self.textbox)
+                #add textbox for report folder location
+                self.textboxfolder = TextBox()
+                self.textboxfolder.Text = "Proposed report folder Path goes here"
+                self.textboxfolder.Location = Point(10,35)
+                self.textboxfolder.Width = 450
+
+                self.Controls.Add(self.textboxfile)
+                self.Controls.Add(self.textboxfolder)
                 self.Controls.Add(self.button1)
                 self.CenterToScreen()
 
-                self.pathName = ""
-
-        def AddHeading(self, v_sHeading):
-                self.Text = v_sHeading
-
-        def AddPathTitle(self, v_sPathTitle):
-                self.textbox.Text = v_sPathTitle        
+                self.folderpathname = ""
+                self.CSVfilepathname = ""     
 
         def OKPressed(self, sender, args):
-                s = self.textbox.Text
-                if ( os.path.isdir(s) == True ) and ( os.path.isfile(s) == False ):
-                        MessageBox.Show( "This directory is already populated, please choose another." , "Invalid Directory" )
-                else:
-                        r = MessageBox.Show( "This path does not exist. Would you like to create it?", "Invalid Directory", MessageBoxButtons.YesNo, MessageBoxIcon.Question )
+                strCSVFile = self.textboxfile.Text
+                strReport = self.textboxfolder.Text
+                if ( os.path.isfile( strCSVFile ) == False ):
+                        MessageBox.Show( "The specified CSV file does not exist, please choose another." , "Invalid Directory" )
+                elif ( os.path.isdir( strReport ) == False ):
+                        r = MessageBox.Show( "Folder path for report location does not exist. Would you like to create it?", "Invalid Directory", MessageBoxButtons.YesNo, MessageBoxIcon.Question )
                         if r == DialogResult.Yes:
-                                os.mkdir(s)
-                                os.mkdir(s + "\Images")
-                                os.mkdir(s + "\Thumbs")
-                                self.pathName = s
+                                os.mkdir(strReport)
+                                os.mkdir(strReport + "\Images")
+                                os.mkdir(strReport + "\Thumbs")
+                                self.folderpathname = strReport
+                                self.CSVfilepathname = strCSVFile
                                 self.Close()
                         else:
-                            self.pathName = s
-                            self.Close()
                             pass  
+                else:
+                    MessageBox.Show( "The specified report folder already exists, please choose another." , "Invalid Directory" )
+                    pass
 
 
 # *******************************************************************
