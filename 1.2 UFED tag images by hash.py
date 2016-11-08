@@ -117,7 +117,9 @@ def main():
 
                     sThumbName = eachImage.Name + '.png'
                     # add relative path to HTML
-                    objHTMLWrite.AddImageLocationReference(eachLineSplit[iCategoryIndex], sThumbRelLoc + '\\' + sThumbName, sImagesRelLoc  + '\\' + eachImage.Name)
+                    sFullThumbPath = sThumbRelLoc + '\\' + sThumbName
+                    sFullImagePath = sImagesRelLoc  + '\\' + eachImage.Name
+                    objHTMLWrite.AddImageLocationReference( eachLineSplit[iCategoryIndex], sFullThumbPath, sFullImagePath)
                     # add file information to table content
                     lstDetails = ['Name: ' + eachImage.Name, 'Path@ ' + eachImage.Folder, 'Creation date: ' + eachImage.CreationTime, 'MD5: ' + eachImage.Md5 ]
                     objHTMLWrite.AddTableContentByKeyAsLists( eachLineSplit[iCategoryIndex], lstDetails )
@@ -313,57 +315,66 @@ class clsHTMLWriter:
 
     def __init__(self):
         self.__sHeading = 'South Yorkshire Police Case Report'
-        self.__dicCategories = {'Category A':'', 'Category B':'', 'Category C':''}
+        self.__dicCategories = {}
 
     def AddHeadingTitle(self, v_sHeading):
         self.__sHeading = v_sHeading
 
-    def AddTableContentByKeyAsLists(self, v_sKey, v_sTableContent):
+    def AddTableContentByKeyAsLists(self, v_sKey, v_sThumbRelativeLocation, v_sImageRelativeLocation, v_lstTableContent):
         # nested dictionary for each Category image
         # 19/07/2016 - added code for if v_sKey does not exist
-        sHTMLBuiltString = self.__sBuildHTMLTableRowString(v_sTableContent)
-        self.__AddToDicCategories(v_sKey, sHTMLBuiltString)
+        sARefString = self.__GetImageHTMLReference(v_sThumbRelativeLocation, v_sImageRelativeLocation)
+        lstTemp = self.__sBuildHTMLTableLst(sARefString, v_lstTableContent)
+        self.__AddToDicCategories(v_sKey, lstTemp)
      
-    def AddImageLocationReference(self, v_sKey, v_sThumbRelativeLocation, v_sImageRelativeLocation = ''):
-        sHTMLBuiltString = '<TR><TD>'
-        if v_sImageRelativeLocation != '':
-            sHTMLBuiltString += '<A href=.' + v_sImageRelativeLocation + '>'
-        else:
-            sHTMLBuiltString += '<A href=.' + v_sThumbRelativeLocation + '>', 
-        sHTMLBuiltString += '<IMG src=.' + v_sThumbRelativeLocation + '>'
-        sHTMLBuiltString += '</A></TD></TR>'
-        self.__AddToDicCategories(v_sKey, sHTMLBuiltString)
-    
-    def WriteHTMLtoFile(self, v_sFileLocation):
+    def WriteHTMLtoFile(self, v_sFileLocation, v_iTableColumns=3):
         #print(v_sFileLocation)
         filestream = open(v_sFileLocation, 'w')
         sHTML = '<HTML><H1>' + self.__sHeading + '</H1>'
         for eachCategory in self.__dicCategories:
             if self.__dicCategories[eachCategory] != '':
                 sHTML += '<H2>' + eachCategory + '</H2>'
-                sHTML += '<TABLE>'
-                sHTML += self.__dicCategories[eachCategory]
-                sHTML += '</TABLE>'
+                sHTML += '<TABLE>' + '<TR>'
+                iCount = 0
+                for eachSubLst in self.__dicCategories[eachCategory]:
+                    iCount += 1
+                    for eachListValue in eachSubLst:
+                        sHTML += eachListValue
+                    if iCount % v_iTableColumns == 0:
+                        sHTML += '</TR><TR>'
+                sHTML += '</TR></TABLE>'
         sHTML += '</HTML>'
         filestream.write(sHTML)
         filestream.close()
 
     # private functions
-    def __sBuildHTMLTableRowString(self, v_sTableContent):
-        sHTMLBuiltString = '<TR>'
-        for sTableContent in v_sTableContent:
-            print(sTableContent)
-            sTableContent = '<TD>' + str(sTableContent) + '</TD>'
-            sHTMLBuiltString += str(sTableContent)
-            sHTMLBuiltString += '</TR>'  
-        return (sHTMLBuiltString)
+    def __sBuildHTMLTableLst(self, v_sARefString, v_lstTableContent):
+        #sHTMLBuiltString = '<TR>'
+        lstTemp = []
+        sHTMLBuiltString = '<TD><BR>' + v_sARefString + '<BR>'
+        for sTableContent in v_lstTableContent:
+            sHTMLBuiltString += sTableContent + '<BR>'
+        sHTMLBuiltString += '</TD>'  
+        lstTemp = [sHTMLBuiltString]
+        return (lstTemp)
 
     def __AddToDicCategories(self, v_sKey, v_sHTMLBuiltString):
+        lstTemp = [v_sHTMLBuiltString]
         if v_sKey in self.__dicCategories:
-            self.__dicCategories[v_sKey] += v_sHTMLBuiltString
+            self.__dicCategories[v_sKey] += lstTemp
         else:  
-            self.__dicCategories[v_sKey] = v_sHTMLBuiltString
+            self.__dicCategories[v_sKey] = lstTemp
 
+
+    def __GetImageHTMLReference(self, v_sThumbRelativeLocation, v_sImageRelativeLocation):
+        sHTMLBuiltString = ''
+        if v_sImageRelativeLocation != '':
+            sHTMLBuiltString += '<A href=.' + v_sImageRelativeLocation + '>'
+        else:
+            sHTMLBuiltString += '<A href=.' + v_sThumbRelativeLocation + '>', 
+        sHTMLBuiltString += '<IMG src=.' + v_sThumbRelativeLocation + '>'
+        sHTMLBuiltString += '</A>'
+        return ( sHTMLBuiltString )
 
 # # # Start of script  # # #
 main()
