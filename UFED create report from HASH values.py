@@ -1,13 +1,9 @@
 # *******************************************************************
-# ** Name:          UFED tag images by hash
-# ** Version:       v1.5
+# ** Name:          UFED create report from HASH values
+# ** Version:       v2.0
 # ** Purpose:       A short script to open exported CSV separated export from NetClean of categorised images including MD5 value.
-#					The script will iterate through each image file witin an extraction and tag those images located.
-#    11/05/2016      - Amended purpose to include writing HTML report.
-#    20/05/2016		 - Amended coding to include PIL and to produce thumbs rather than original images in report 
-#    30/08/2016      - 1.3 - Changed reference to PIL to CLR Image as UFED Python uses IronPython 2.6 and PIL not supported.
-#    21/09/2016      - 1.4 - Form function to select report location and CSV file location
-#    +01/10/2016     - 1.5 - Testing phase before release!
+#					The script will iterate through each image file witin an extraction and create a report with images located.
+#     09/11/2016     - 2.0 - First working release to HTCU
 # ** Returns:       None - file located and not-located or duplicates will be logged.
 # ** Variables:     N/A
 # ** Author:        Matthew KELLY
@@ -19,17 +15,12 @@
 # ******************************************************************
 
 # # # Imports # # #
-#import json
-
-# from physical import *
 import os
 import hashlib
 import clr
 clr.AddReference("System.Windows.Forms")
 from System.Windows.Forms import *
 from System.Drawing import *
-
-# contains IntPtr type
 from System import IntPtr
 
 # # # function definitions # # # 
@@ -37,7 +28,8 @@ from System import IntPtr
 # *******************************************************************
 # ** Name:          main()
 # ** Purpose:       A short script to open exported CSV separated export from NetClean of categorised images including MD5 value.
-#					The script will iterate through each image file witin an extraction and tag those images located.
+#					The script will iterate through each image file witin an extraction and export those images located.
+#                   These exported files will be placed into a report with thumbnails created, linking to original.
 # ** Returns:       None - file located and not-located or duplicates will be logged.
 # ** Variables:     N/A
 # ** Author:        Matthew KELLY
@@ -51,14 +43,13 @@ def main():
     Application.Run( frmCSVFolder )
     sCSVFileLoc = frmCSVFolder.CSVfilepathname
     sExportReportLoc = frmCSVFolder.folderpathname
-
+    
     sImagesRelLoc = '\\Images'
     sThumbRelLoc = '\\Thumbs'
     sReportName = 'report.html'
 
     # class 'Images' of Data Files
     objImageFiles = ds.DataFiles['Image']
-    
     # HTML parser attempt, could do with some work!
     objHTMLWrite = clsHTMLWriter()
 
@@ -82,13 +73,17 @@ def main():
         else:
             # convert HASH value to lowercase for match in UFED reader
             eachLineSplit[iHASHIndex] = eachLineSplit[iHASHIndex].lower()
+
             # Iterate through each image and locate matching MD5 values
             for eachImage in objImageFiles:
+
                 strMD5 = eachImage.Md5
+                # calculate HASH value if not in Cellebrite UFED
                 if strMD5 == '':
                     strMD5 = getMd5HashValue(eachImage)
 
                 if strMD5  == eachLineSplit[iHASHIndex].strip():
+
                     # save image to images location
                     try:
                         exportUFEDFile(eachImage, sExportReportLoc + sImagesRelLoc)
@@ -96,19 +91,17 @@ def main():
                         print('Error writing file!')
 
                     # shrink image to specified size and then display this thumbnail in report and reference full sized image
-                    # 30/08/2016 PIL will not work as UFED uses IronPython. Use CLR Image instead
                     objImageFile = Image.FromFile(sExportReportLoc + sImagesRelLoc + '\\' + eachImage.Name)
                     objThumbImage = resizeImage(objImageFile)
-                    
+                    sThumbName = eachImage.Name + '.png'
                     try:
-                        objThumbImage.Save(sExportReportLoc + sThumbRelLoc + '\\' + eachImage.Name + '.png')
+                        objThumbImage.Save(sExportReportLoc + sThumbRelLoc + '\\' + sThumbName)
                     except:
                          print('error creating thumbnail')
                          
                     objThumbImage.Dispose
                     objImageFile.Dispose
 
-                    sThumbName = eachImage.Name + '.png'
                     # add relative path to HTML
                     sFullThumbPath = sThumbRelLoc + '\\' + sThumbName
                     sFullImagePath = sImagesRelLoc  + '\\' + eachImage.Name
@@ -127,12 +120,14 @@ def main():
     print(sExportReportLoc + '\\' +  sReportName)
     objHTMLWrite.WriteHTMLtoFile(sExportReportLoc + '\\' + sReportName, 4)
 
+
 # *******************************************************************
 # ** Name:          resizeImage
 # ** Purpose:       
 # ** Author:        Matthew KELLY
 # ** Date:          
-# ** Revisions:     
+# ** Revisions:     Originally used PIL, but incompatible with IronPython.
+#                   Used CLR instead
 # ****************************************************************** 
 def resizeImage (r_objImage):
     xTo, yTo = 100, 100
@@ -150,19 +145,23 @@ def resizeImage (r_objImage):
             objResizeImage = r_objImage.GetThumbnailImage ( int(xNow / pY), int(yNow / pY), objThumnailImageAbort, IntPtr(0) )
         return objResizeImage 
 
+# *******************************************************************
+# ** Name:          ThumbnailCallBack
+# ** Purpose:       Used by Resize Image to return false
+# ** Author:        Matthew KELLY
+# ****************************************************************** 
 def ThumbnailCallBack():
     return False
 
 # *******************************************************************
 # ** Name:          getMd5HashValue
 # ** Purpose:       
-# ** Author:       
+# ** Author:        Matthew KELLY
 # ** Date:          
-# ** Revisions:     
+# ** Revisions:     none
 # ****************************************************************** 
 def getMd5HashValue (r_objImageFile):
 
-    #print (objImageFile.ToString())
     hash = hashlib.md5()
     try:
         rd = r_objImageFile.read()
@@ -174,35 +173,11 @@ def getMd5HashValue (r_objImageFile):
 
 # *******************************************************************
 # ** Name:          IForm
-# ** Purpose:       Takes an Image from ds in UFED Cellebrite and exports to file-path specified
+# ** Purpose:       
 # ** Author:        Unknown - MET Police
 # ** Date:          
 # ** Revisions:     06/05/2016 - removed hash library reference
-# ****************************************************************** 
-def strSelectFolder():
-    dialog = FolderBrowserDialog()
-    if ( dialog.ShowDialog() == DialogResult.OK):
-        return dialog.SelectedPath
-
-# *******************************************************************
-# ** Name:          IForm
-# ** Purpose:       Takes an Image from ds in UFED Cellebrite and exports to file-path specified
-# ** Author:        Unknown - MET Police
-# ** Date:          
-# ** Revisions:     06/05/2016 - removed hash library reference
-# ****************************************************************** 
-def strSelectFile():
-    dialog = OpenFileDialog()
-    dialog.Filter = "CSV files (*.csv)|*.csv"
-    if ( dialog.ShowDialog() == DialogResult.OK ):
-        return dialog.FileName
-
-# *******************************************************************
-# ** Name:          IForm
-# ** Purpose:       Takes an Image from ds in UFED Cellebrite and exports to file-path specified
-# ** Author:        Unknown - MET Police
-# ** Date:          
-# ** Revisions:     06/05/2016 - removed hash library reference
+#                   08/11/2016 - added further text box for CSV file and report folder
 # ****************************************************************** 
 class IForm(Form):
 
@@ -297,7 +272,6 @@ def exportUFEDFile(pic,path):
         return ""
 
 
-
 # # # class definitions # # # 
 
 # *******************************************************************
@@ -308,6 +282,10 @@ def exportUFEDFile(pic,path):
 # ** Date:          11/05/2015
 # ** Revisions:     19/07/2016 - amended functions AddTableContentByKeyAsLists() and AddImageLocationReference() to include private
 #                    function call __AddToDicCategories() that checks whether dictionary key exists before adding to Category dictionary
+#                   07-08/11/2016 - amended AddTableContentByKeyAsLists() to only create TD data HTML and add to dictionary as list
+#                   08/11/2016 - amended WriteHTMLtoFile() to write HTML TD stored in dictionary as lists in columns as specified.
+#                                 The intention will be to add this variable to the form for user specification, 
+#                                 Will also change functionality to make it possible for separate reports to be created
 # ******************************************************************
 class clsHTMLWriter:
 
@@ -320,13 +298,11 @@ class clsHTMLWriter:
 
     def AddTableContentByKeyAsLists(self, v_sKey, v_sThumbRelativeLocation, v_sImageRelativeLocation, v_lstTableContent):
         # nested dictionary for each Category image
-        # 19/07/2016 - added code for if v_sKey does not exist
         sARefString = self.__GetImageHTMLReference(v_sThumbRelativeLocation, v_sImageRelativeLocation)
         lstTemp = self.__sBuildHTMLTableLst(sARefString, v_lstTableContent)
         self.__AddToDicCategories(v_sKey, lstTemp)
      
-    def WriteHTMLtoFile(self, v_sFileLocation, v_iTableColumns=3):
-        #print(v_sFileLocation)
+    def WriteHTMLtoFile(self, v_sFileLocation, v_iTableColumns=3):)
         filestream = open(v_sFileLocation, 'w')
         sHTML = '<HTML><H1>' + self.__sHeading + '</H1>'
         for eachCategory in self.__dicCategories:
@@ -347,7 +323,6 @@ class clsHTMLWriter:
 
     # private functions
     def __sBuildHTMLTableLst(self, v_sARefString, v_lstTableContent):
-        #sHTMLBuiltString = '<TR>'
         lstTemp = []
         sHTMLBuiltString = '<TD><BR>' + v_sARefString + '<BR>'
         for sTableContent in v_lstTableContent:
@@ -362,7 +337,6 @@ class clsHTMLWriter:
             self.__dicCategories[v_sKey] += lstTemp
         else:  
             self.__dicCategories[v_sKey] = lstTemp
-
 
     def __GetImageHTMLReference(self, v_sThumbRelativeLocation, v_sImageRelativeLocation):
         sHTMLBuiltString = ''
