@@ -1,9 +1,12 @@
 # *******************************************************************
 # ** Name:          UFED create report from HASH values
-# ** Version:       v2.0
+# ** Version:       v2.1
 # ** Purpose:       A short script to open exported CSV separated export from NetClean of categorised images including MD5 value.
 #					The script will iterate through each image file witin an extraction and create a report with images located.
 #     09/11/2016     - 2.0 - First working release to HTCU
+#     09/11/2016     - 2.1 - Amended Form to inlude checkbox to separate reports.
+#                          - Changed HTMLWriter accordingly 
+#     10/11/2016     - 2.2 - Changed resizeImage and added coding to count
 # ** Returns:       None - file located and not-located or duplicates will be logged.
 # ** Variables:     N/A
 # ** Author:        Matthew KELLY
@@ -38,16 +41,17 @@ from System import IntPtr
 # ******************************************************************
 def main():
 
-    # Get location of CSV file and path for log file
+    # Get location of CSV file, path for report and report file name
     frmCSVFolder = IForm()
     Application.Run( frmCSVFolder )
-    sCSVFileLoc = frmCSVFolder.CSVfilepathname
-    sExportReportLoc = frmCSVFolder.folderpathname
+    sCSVFileLoc = frmCSVFolder.sCSVFilePathname
+    sExportReportLoc = frmCSVFolder.sReportFolderName
+    sReportName = frmCSVFolder.sReportFileName
+    bSeparateReports = frmCSVFolder.bSeparateReports
     
     sImagesRelLoc = '\\Images'
     sThumbRelLoc = '\\Thumbs'
-    sReportName = 'report.html'
-
+    
     # class 'Images' of Data Files
     objImageFiles = ds.DataFiles['Image']
     # HTML parser attempt, could do with some work!
@@ -118,8 +122,7 @@ def main():
 
     # Write built HTML stream to file location
     print(sExportReportLoc + '\\' +  sReportName)
-    objHTMLWrite.WriteHTMLtoFile(sExportReportLoc + '\\' + sReportName, 4)
-
+    objHTMLWrite.WriteHTMLtoFile(sExportReportLoc + '\\' + sReportName, bSeparateReports, 4)
 
 # *******************************************************************
 # ** Name:          resizeImage
@@ -128,22 +131,23 @@ def main():
 # ** Date:          
 # ** Revisions:     Originally used PIL, but incompatible with IronPython.
 #                   Used CLR instead
+#                   10/11/2016 - Removed coding to return passed image as want to return png and not originating format
 # ****************************************************************** 
 def resizeImage (r_objImage):
-    xTo, yTo = 100, 100
+    xTo, yTo = 100.0, 100.0
     xNow, yNow = r_objImage.Width, r_objImage.Height
-    if xNow <= xTo and yNow <= yTo:
-        objResizeImage = r_objImage
-        return objResizeImage
+    pX = xNow / xTo
+    pY = yNow / yTo
+    #if xNow <= xTo and yNow <= yTo:
+    #    objResizeImage = r_objImage
+    #    return objResizeImage
+    #else:
+    objThumnailImageAbort = r_objImage.GetThumbnailImageAbort(ThumbnailCallBack)
+    if pX > pY:
+        objResizeImage = r_objImage.GetThumbnailImage ( int(xNow / pX), int(yNow / pX), objThumnailImageAbort, IntPtr(0))
     else:
-        pX = xNow / xTo
-        pY = yNow / yTo
-        objThumnailImageAbort = r_objImage.GetThumbnailImageAbort(ThumbnailCallBack)
-        if pX > pY:
-            objResizeImage = r_objImage.GetThumbnailImage ( int(xNow / pX), int(yNow / pX), objThumnailImageAbort, IntPtr(0))
-        else:
-            objResizeImage = r_objImage.GetThumbnailImage ( int(xNow / pY), int(yNow / pY), objThumnailImageAbort, IntPtr(0) )
-        return objResizeImage 
+        objResizeImage = r_objImage.GetThumbnailImage ( int(xNow / pY), int(yNow / pY), objThumnailImageAbort, IntPtr(0) )
+    return objResizeImage 
 
 # *******************************************************************
 # ** Name:          ThumbnailCallBack
@@ -183,48 +187,71 @@ class IForm(Form):
 
         def __init__(self):
                 self.Text = "Select CSV file and report folder locations"
-                self.Height = 150
+                self.Height = 175
                 self.Width = 500
 
                 #add button
-                self.button1 = Button()
-                self.button1.Text = "&OK"
-                self.button1.Location = Point(10, 60)
-                self.button1.Click += self.OKPressed
+                self.btnOk = Button()
+                self.btnOk.Text = "&OK"
+                self.btnOk.Location = Point(10, 85)
+                self.btnOk.Click += self.OKPressed
 
                 #add textbox for CSV file
-                self.textboxfile = TextBox()
-                self.textboxfile.Text = "CSV file location goes here"
-                self.textboxfile.Location = Point(10,10)
-                self.textboxfile.Width = 450
+                self.txtCSVFileName = TextBox()
+                self.txtCSVFileName.Text = "CSV file location goes here"
+                self.txtCSVFileName.Location = Point(10,10)
+                self.txtCSVFileName.Width = 450
 
                 #add textbox for report folder location
-                self.textboxfolder = TextBox()
-                self.textboxfolder.Text = "Proposed report folder Path goes here"
-                self.textboxfolder.Location = Point(10,35)
-                self.textboxfolder.Width = 450
+                self.txtReportFolderLocation = TextBox()
+                self.txtReportFolderLocation.Text = "Proposed report folder Path goes here"
+                self.txtReportFolderLocation.Location = Point(10,35)
+                self.txtReportFolderLocation.Width = 450
 
-                self.Controls.Add(self.textboxfile)
-                self.Controls.Add(self.textboxfolder)
-                self.Controls.Add(self.button1)
+                #add textbox for report folder location
+                self.txtReportFileName = TextBox()
+                self.txtReportFileName.Text = "Proposed report file name. (No file extensions, please!)"
+                self.txtReportFileName.Location = Point(10,60)
+                self.txtReportFileName.Width = 250
+
+                # add a tick box to indicate whether to separate reports
+                self.chkSeparateReports = CheckBox()
+                self.chkSeparateReports.Text = "Separate Reports by Category"
+                self.chkSeparateReports.Location = Point(300, 85)
+                self.chkSeparateReports.Width = 200
+                self.chkSeparateReports.Checked = False
+
+                self.Controls.Add(self.txtCSVFileName)
+                self.Controls.Add(self.txtReportFolderLocation)
+                self.Controls.Add(self.txtReportFileName)
+                self.Controls.Add(self.btnOk)
+                self.Controls.Add(self.chkSeparateReports)
                 self.CenterToScreen()
 
-                self.folderpathname = ""
-                self.CSVfilepathname = ""     
+                self.sCSVFilePathname = ""   
+                self.sReportFolderName = ""
+                self.sReportFileName = ""
+                self.bSeparateReports = False
 
         def OKPressed(self, sender, args):
-                strCSVFile = self.textboxfile.Text
-                strReport = self.textboxfolder.Text
-                if ( os.path.isfile( strCSVFile ) == False ):
+
+                sCSVFile = self.txtCSVFileName.Text
+                sReportFolder = self.txtReportFolderLocation.Text
+                sReportFile = self.txtReportFileName.Text
+                bSeparateReports = self.chkSeparateReports.Checked
+
+                if ( os.path.isfile( sCSVFile ) == False ):
                         MessageBox.Show( "The specified CSV file does not exist, please choose another." , "Invalid Directory" )
-                elif ( os.path.isdir( strReport ) == False ):
+                elif ( os.path.isdir( sReportFolder ) == False ):
                         r = MessageBox.Show( "Folder path for report location does not exist. Would you like to create it?", "Invalid Directory", MessageBoxButtons.YesNo, MessageBoxIcon.Question )
                         if r == DialogResult.Yes:
-                                os.mkdir(strReport)
-                                os.mkdir(strReport + "\Images")
-                                os.mkdir(strReport + "\Thumbs")
-                                self.folderpathname = strReport
-                                self.CSVfilepathname = strCSVFile
+                                os.mkdir(sReportFolder)
+                                os.mkdir(sReportFolder + "\Images")
+                                os.mkdir(sReportFolder + "\Thumbs")
+                                self.sCSVFilePathname = sCSVFile
+                                self.sReportFolderName = sReportFolder
+                                self.sReportFileName = sReportFile
+                                self.bSeparateReports = bSeparateReports
                                 self.Close()
                         else:
                             pass  
@@ -241,7 +268,6 @@ class IForm(Form):
 # ** Revisions:     06/05/2016 - removed hash library reference
 # ****************************************************************** 
 def exportUFEDFile(pic,path):
-    print(path)
     fileDataReadsize = 2**25
     fileSize = pic.Size
     if (fileSize > 2113929216):
@@ -256,7 +282,6 @@ def exportUFEDFile(pic,path):
     locateInvalidChar = ext.find("?")
     if (locateInvalidChar != -1):
         ext = ext[:locateInvalidChar]
-    print(filePath) 
     try:
         f = open(filePath,'wb')
         pic.seek(0)
@@ -302,24 +327,33 @@ class clsHTMLWriter:
         lstTemp = self.__sBuildHTMLTableLst(sARefString, v_lstTableContent)
         self.__AddToDicCategories(v_sKey, lstTemp)
      
-    def WriteHTMLtoFile(self, v_sFileLocation, v_iTableColumns=3):)
-        filestream = open(v_sFileLocation, 'w')
-        sHTML = '<HTML><H1>' + self.__sHeading + '</H1>'
-        for eachCategory in self.__dicCategories:
-            if self.__dicCategories[eachCategory] != '':
-                sHTML += '<H2>' + eachCategory + '</H2>'
-                sHTML += '<TABLE>' + '<TR>'
-                iCount = 0
-                for eachSubLst in self.__dicCategories[eachCategory]:
-                    iCount += 1
-                    for eachListValue in eachSubLst:
-                        sHTML += eachListValue
-                    if iCount % v_iTableColumns == 0:
-                        sHTML += '</TR><TR>'
-                sHTML += '</TR></TABLE>'
-        sHTML += '</HTML>'
-        filestream.write(sHTML)
-        filestream.close()
+    def WriteHTMLtoFile(self, v_sFileLocation, v_bSeparateReports, v_iTableColumns=3):
+        
+        if v_bSeparateReports == True:
+            #separate report for each category
+            for eachCategory in self.__dicCategories:
+
+                filestream = open(v_sFileLocation + ' ' + eachCategory + '.html', 'w')
+
+                sHTML = '<HTML><H1>' + self.__sHeading + '</H1>'
+                sHTML += self.__sBuildHTMLTableStringForCategory(eachCategory, v_iTableColumns)
+                sHTML += '</HTML>'
+
+                filestream.write(sHTML)
+                filestream.close()
+        else:
+            # one report for each category
+            filestream = open(v_sFileLocation + '.html', 'w')  
+
+            sHTML = '<HTML><H1>' + self.__sHeading + '</H1>'
+
+            for eachCategory in self.__dicCategories:
+                sHTML += self.__sBuildHTMLTableStringForCategory(eachCategory, v_iTableColumns)
+            sHTML += '</HTML>'
+
+            filestream.write(sHTML)
+            filestream.close()
+        
 
     # private functions
     def __sBuildHTMLTableLst(self, v_sARefString, v_lstTableContent):
@@ -330,6 +364,26 @@ class clsHTMLWriter:
         sHTMLBuiltString += '</TD>'  
         lstTemp = [sHTMLBuiltString]
         return (lstTemp)
+
+    def __sBuildHTMLTableStringForCategory(self, r_CurrentCategory, v_iTableColumns):
+
+        if self.__dicCategories[r_CurrentCategory] != '':
+            sHTML = '<H2>' + r_CurrentCategory + '</H2>'
+            sHTML += '<TABLE>' + '<TR>'
+            iCount = 0
+            for eachSubLst in self.__dicCategories[r_CurrentCategory]:
+                iCount += 1
+                for eachListValue in eachSubLst:
+                    # 10/11/2016 - added coding to append count of images per category into HTML. Assumes that first lst value will be image </A>
+                    iIndex = eachListValue.find('</A>')
+                    eachListValue = eachListValue[:iIndex+4] + '<BR>' + str(iCount) + eachListValue[iIndex+4:]                                    
+                    sHTML += eachListValue
+                if iCount % v_iTableColumns == 0:
+                    sHTML += '</TR><TR>'
+            sHTML += '</TR></TABLE>'
+        else:
+            sHTML = ''
+        return sHTML
 
     def __AddToDicCategories(self, v_sKey, v_sHTMLBuiltString):
         lstTemp = [v_sHTMLBuiltString]
