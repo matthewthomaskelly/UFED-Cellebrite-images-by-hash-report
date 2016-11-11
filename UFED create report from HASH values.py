@@ -1,12 +1,12 @@
 # *******************************************************************
 # ** Name:          UFED create report from HASH values
-# ** Version:       v2.1
+# ** Version:       v2.2
 # ** Purpose:       A short script to open exported CSV separated export from NetClean of categorised images including MD5 value.
 #					The script will iterate through each image file witin an extraction and create a report with images located.
 #     09/11/2016     - 2.0 - First working release to HTCU
 #     09/11/2016     - 2.1 - Amended Form to inlude checkbox to separate reports.
 #                          - Changed HTMLWriter accordingly 
-#     10/11/2016     - 2.2 - Changed resizeImage and added coding to count
+#     10/11/2016     - 2.2 - Changed resizeImage and added coding to count number of images
 # ** Returns:       None - file located and not-located or duplicates will be logged.
 # ** Variables:     N/A
 # ** Author:        Matthew KELLY
@@ -212,7 +212,7 @@ class IForm(Form):
                 self.txtReportFileName = TextBox()
                 self.txtReportFileName.Text = "Proposed report file name. (No file extensions, please!)"
                 self.txtReportFileName.Location = Point(10,60)
-                self.txtReportFileName.Width = 250
+                self.txtReportFileName.Width = 300
 
                 # add a tick box to indicate whether to separate reports
                 self.chkSeparateReports = CheckBox()
