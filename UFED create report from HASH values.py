@@ -49,113 +49,85 @@ def main():
     sReportName = frmCSVFolder.sReportFileName
     bSeparateReports = frmCSVFolder.bSeparateReports
     
-    sImagesRelLoc = '\\Images'
     sThumbRelLoc = '\\Thumbs'
-    
-    # class 'Images' of Data Files
-    objImageFiles = ds.DataFiles['Image']
-    # HTML parser attempt, could do with some work!
-    objHTMLWrite = clsHTMLWriter()
+    os.mkdir(sExportReportLoc + sThumbRelLoc)
 
-    # Open specified CSV file
-    # Open CSV file and locate column linked to MD5 values
-    objCSVFile = open( sCSVFileLoc )
-    
-    # first line is the headings
-    iLineCount = 1
-    for eachLine in objCSVFile:
+    lstDataFiles = ['Image', 'Video']
 
-        # split the contents of eachline using ',' deliminator. 
-        eachLineSplit = eachLine.split(',')
+    # loop through each specified data files (will probably remain at Images and Videos only!)
+    for eachDataType in lstDataFiles:
 
-        # read first line and locate at what index the HASH value is stored for comparison
-        if iLineCount == 1:
-            iLen = len(eachLineSplit)
-            eachLineSplit[iLen-1] = eachLineSplit[iLen-1].strip()
-            iHASHIndex = eachLineSplit.index('Hash Value')
-            iCategoryIndex = eachLineSplit.index('Category')
-        else:
+        # Open CSV file and locate column linked to MD5 values
+        objCSVFile = open( sCSVFileLoc )
+        sReadLine = objCSVFile.readline()
+        sReadLineSplit = sReadLine.split(',')
+        iLen = len(sReadLineSplit)
+        sReadLineSplit[iLen-1] = sReadLineSplit[iLen-1].strip()
+        iHASHIndex = sReadLineSplit.index('Hash Value')
+        iCategoryIndex = sReadLineSplit.index('Category')
+
+        objDataFiles = ds.DataFiles[eachDataType]
+        sFilesRelLoc = sExportReportLoc + '\\' + eachDataType
+        os.mkdir(sFilesRelLoc)
+        
+        lstFiles = []
+        
+        while True:
+
+            # Class to store details of each MD5 match located
+            objFilesDetails = ImageDetails()
+
+            sReadLine = objCSVFile.readline()
+            if not sReadLine:
+                break
+
+            sReadLineSplit = sReadLine.split(',')    
+
             # convert HASH value to lowercase for match in UFED reader
-            eachLineSplit[iHASHIndex] = eachLineSplit[iHASHIndex].lower()
+            sReadLineSplit[iHASHIndex] = sReadLineSplit[iHASHIndex].lower()
 
             # Iterate through each image and locate matching MD5 values
-            for eachImage in objImageFiles:
+            for eachFile in objDataFiles:
 
-                strMD5 = eachImage.Md5
+                sMD5 = eachFile.Md5
                 # calculate HASH value if not in Cellebrite UFED
-                if strMD5 == '':
-                    strMD5 = getMd5HashValue(eachImage)
+                if sMD5 == '':
+                    sMD5 = getMd5HashValue(eachFile)
 
-                if strMD5  == eachLineSplit[iHASHIndex].strip():
+                if sMD5  == sReadLineSplit[iHASHIndex].strip():
 
                     # save image to images location
                     try:
-                        exportUFEDFile(eachImage, sExportReportLoc + sImagesRelLoc)
+                        exportUFEDFile(eachFile, sFilesRelLoc)
                     except:
                         print('Error writing file!')
 
-                    # shrink image to specified size and then display this thumbnail in report and reference full sized image
-                    objImageFile = Image.FromFile(sExportReportLoc + sImagesRelLoc + '\\' + eachImage.Name)
-                    objThumbImage = resizeImage(objImageFile)
-                    sThumbName = eachImage.Name + '.png'
-                    try:
-                        objThumbImage.Save(sExportReportLoc + sThumbRelLoc + '\\' + sThumbName)
-                    except:
-                         print('error creating thumbnail')
-                         
-                    objThumbImage.Dispose
-                    objImageFile.Dispose
+                    objFilesDetails.sCategory = sReadLineSplit[iCategoryIndex]
+                    objFilesDetails.sMD5 = sReadLineSplit[iHASHIndex]
+                    objFilesDetails.sFileName = eachFile.Name
+                    objFilesDetails.sFolderName = eachFile.Folder
+                    objFilesDetails.sCreationDate = str(eachFile.CreationTime)
+                    objFilesDetails.sRelSavedPathFileName = sFilesRelLoc + '\\'  + eachFile.Name
+                    objFilesDetails.sRelSavedPathThumbName  = sExportReportLoc + sThumbRelLoc + '\\' + eachFile.Name + '.png'
+                    os.system("c:\\ffmpeg -i " + objFilesDetails.sRelSavedPathFileName + " -vf scale=100:-1 " + objFilesDetails.sRelSavedPathThumbName) 
+                    
+                    lstFiles.append(objFilesDetails)
 
-                    # add relative path to HTML
-                    sFullThumbPath = sThumbRelLoc + '\\' + sThumbName
-                    sFullImagePath = sImagesRelLoc  + '\\' + eachImage.Name
+                # end of sMD5 match
 
-                    # add file information to table content
-                    lstDetails = ['Name: ' + eachImage.Name, 'Path@ ' + eachImage.Folder, 'Creation date: ' + str(eachImage.CreationTime), 'MD5: ' + eachImage.Md5 ]
-                    objHTMLWrite.AddTableContentByKeyAsLists( eachLineSplit[iCategoryIndex], sFullThumbPath, sFullImagePath, lstDetails )
+        for each in lstFiles:
+            print(each.sFileName) 
 
-        iLineCount += 1
-        # No match - log?
+            # end of eachFile in DataFiles
        
-    # close CSV file
-    objCSVFile.close()
+        # end of read line CSV files
+        # close CSV file
+        objCSVFile.close()
 
     # Write built HTML stream to file location
-    print(sExportReportLoc + '\\' +  sReportName)
-    objHTMLWrite.WriteHTMLtoFile(sExportReportLoc + '\\' + sReportName, bSeparateReports, 4)
-
-# *******************************************************************
-# ** Name:          resizeImage
-# ** Purpose:       
-# ** Author:        Matthew KELLY
-# ** Date:          
-# ** Revisions:     Originally used PIL, but incompatible with IronPython.
-#                   Used CLR instead
-#                   10/11/2016 - Removed coding to return passed image as want to return png and not originating format
-# ****************************************************************** 
-def resizeImage (r_objImage):
-    xTo, yTo = 100.0, 100.0
-    xNow, yNow = r_objImage.Width, r_objImage.Height
-    pX = xNow / xTo
-    pY = yNow / yTo
-    #if xNow <= xTo and yNow <= yTo:
-    #    objResizeImage = r_objImage
-    #    return objResizeImage
-    #else:
-    objThumnailImageAbort = r_objImage.GetThumbnailImageAbort(ThumbnailCallBack)
-    if pX > pY:
-        objResizeImage = r_objImage.GetThumbnailImage ( int(xNow / pX), int(yNow / pX), objThumnailImageAbort, IntPtr(0))
-    else:
-        objResizeImage = r_objImage.GetThumbnailImage ( int(xNow / pY), int(yNow / pY), objThumnailImageAbort, IntPtr(0) )
-    return objResizeImage 
-
-# *******************************************************************
-# ** Name:          ThumbnailCallBack
-# ** Purpose:       Used by Resize Image to return false
-# ** Author:        Matthew KELLY
-# ****************************************************************** 
-def ThumbnailCallBack():
-    return False
+    #print(sExportReportLoc + '\\' +  sReportName)
+    #objHTMLWrite.WriteHTMLtoFile(sExportReportLoc + '\\' + sReportName, bSeparateReports, 4)
+    
 
 # *******************************************************************
 # ** Name:          getMd5HashValue
@@ -174,6 +146,53 @@ def getMd5HashValue (r_objImageFile):
         return hexMD5.upper
     except:
         return ''
+
+class ImageDetails():
+    
+    def __init__(self):
+        self.__sFileName = ''
+        self.__sFolderName = ''
+        self.__sCreationDate = ''
+        self.__sMD5 = ''
+        self.__sCategory = ''
+        self.__sRelSavedPathFileName = ''
+        self.__sRelSavedPathThumbName = ''
+
+    def sFileName(self, v_sData):
+        self.__sFileName = v_sData
+    def sFileName(self):
+        sFileName = self.__sFileName
+
+    def sFolderName(self, v_sData):
+        self.__sFolderName= v_sData
+    def sFolderName(self):
+        sFolderName = self.__sFolderName
+
+    def sCreationDate(self, v_sData):
+        self.__sCreationDate = v_sData
+    def sCreationDate(self):
+        sCreationDate = self.__sCreationDate
+
+    def sMD5(self, v_sData):
+        self.__sMD5 = v_sData
+    def sMD5(self):
+        sMD5 = self.__sMD5
+
+    def sCategory(self, v_sData):
+        self.__sCategory = v_sData
+    def sCategory(self):
+        sCategory = self.__sCategory
+
+    def sRelSavedPathFileName(self, v_sData):
+        self.__sRelSavedPathFileName = v_sData
+    def sRelSavedPathFileName(self):
+        sRelSavedPathFileName = self.__sRelSavedPathFileName
+
+    def sRelSavedPathThumbName(self, v_sData):
+        self.__sRelSavedPathThumbName = v_sData
+    def sRelSavedPathThumbName(self):
+        sRelSavedPathThumbName = self.__sRelSavedPathThumbName
+
 
 # *******************************************************************
 # ** Name:          IForm
@@ -246,8 +265,6 @@ class IForm(Form):
                         r = MessageBox.Show( "Folder path for report location does not exist. Would you like to create it?", "Invalid Directory", MessageBoxButtons.YesNo, MessageBoxIcon.Question )
                         if r == DialogResult.Yes:
                                 os.mkdir(sReportFolder)
-                                os.mkdir(sReportFolder + "\Images")
-                                os.mkdir(sReportFolder + "\Thumbs")
                                 self.sCSVFilePathname = sCSVFile
                                 self.sReportFolderName = sReportFolder
                                 self.sReportFileName = sReportFile
