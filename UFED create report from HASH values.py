@@ -1,19 +1,17 @@
 # *******************************************************************
 # ** Name:          UFED create report from HASH values
-# ** Version:       v2.2
+# ** Version:       v3.0
 # ** Purpose:       A short script to open exported CSV separated export from NetClean of categorised images including MD5 value.
 #					The script will iterate through each image file witin an extraction and create a report with images located.
-#     09/11/2016     - 2.0 - First working release to HTCU
-#     09/11/2016     - 2.1 - Amended Form to inlude checkbox to separate reports.
-#                          - Changed HTMLWriter accordingly 
-#     10/11/2016     - 2.2 - Changed resizeImage and added coding to count number of images
-# ** Returns:       None - file located and not-located or duplicates will be logged.
+# ** Returns:       None 
 # ** Variables:     N/A
 # ** Author:        Matthew KELLY
-# ** Date:          06/05/2015
-# ** Revisions:     none
+# ** Date:          25/11/2015
+# ** Revisions:     v 3.0 adds Class to store each file match data to later write information to HTML report
+#                         uses ffmpeg to create thumbnails for Images and Videos.
 # ** WishList:		Add functionality to form to request file-data information for report.
 # **				Error logging - try/catch in main()?
+# **                file located and not-located or duplicates will be logged.
 # **                Export clsHTMLWriter to separate module for generic use.
 # ******************************************************************
 
@@ -24,7 +22,6 @@ import clr
 clr.AddReference("System.Windows.Forms")
 from System.Windows.Forms import *
 from System.Drawing import *
-from System import IntPtr
 
 # # # function definitions # # # 
 
@@ -37,9 +34,19 @@ from System import IntPtr
 # ** Variables:     N/A
 # ** Author:        Matthew KELLY
 # ** Date:          06/05/2015
-# ** Revisions:     none
+# ** Revisions:     11/2016 - major revision in program logic removing dependency on HTML write for storage of images data.
+#                           - added further loop for Images AND Videos in UFED ds object
+#                           - function uses ffmpeg for thumbnail creation. Added check for ffmpeg existence and alternative calls for Pictures and Videos
 # ******************************************************************
 def main():
+
+    # this variable will be passed to DOS shell. Beware literals! i.e spaces in file/folder names
+    sFFMPEGLocation = 'C:\\FFMPEG.EXE'
+    bCheck = bCheckFFMPEGExists( sFFMPEGLocation )
+    if bCheck != True:
+        MessageBox.Show ("Program cannot find the executable ffmpeg.exe in the root of C: and will terminate prematurely. Sorry!", "ffmpeg.exe dependency!", MessageBoxButtons.OK, MessageBoxIcon.Stop)
+        # This works but for the wrong reasons! change
+        quit()
 
     # Get location of CSV file, path for report and report file name
     frmCSVFolder = IForm()
@@ -55,85 +62,105 @@ def main():
     lstDataFiles = ['Image', 'Video']
 
     # loop through each specified data files (will probably remain at Images and Videos only!)
+    iCount = 0
     for eachDataType in lstDataFiles:
 
         # Open CSV file and locate column linked to MD5 values
         objCSVFile = open( sCSVFileLoc )
         sReadLine = objCSVFile.readline()
-        sReadLineSplit = sReadLine.split(',')
-        iLen = len(sReadLineSplit)
-        sReadLineSplit[iLen-1] = sReadLineSplit[iLen-1].strip()
-        iHASHIndex = sReadLineSplit.index('Hash Value')
-        iCategoryIndex = sReadLineSplit.index('Category')
+        asReadLineSplit = sReadLine.split(',')
+        iLen = len(asReadLineSplit)
+        asReadLineSplit[iLen-1] = asReadLineSplit[iLen-1].strip()
+        iHASHIndex = asReadLineSplit.index('Hash Value')
+        iCategoryIndex = asReadLineSplit.index('Category')
 
         objDataFiles = ds.DataFiles[eachDataType]
-        sFilesRelLoc = sExportReportLoc + '\\' + eachDataType
-        os.mkdir(sFilesRelLoc)
+        sFilesRelLoc =   '\\' + eachDataType
+        os.mkdir(sExportReportLoc + sFilesRelLoc)
         
         lstFiles = []
-        
+
         while True:
 
             # Class to store details of each MD5 match located
-            objFilesDetails = ImageDetails()
+            objFilesDetails = clsImageDetails()
 
+            # When the last line is read this loop will break
             sReadLine = objCSVFile.readline()
             if not sReadLine:
                 break
 
-            sReadLineSplit = sReadLine.split(',')    
+            asReadLineSplit = sReadLine.split(',')    
 
             # convert HASH value to lowercase for match in UFED reader
-            sReadLineSplit[iHASHIndex] = sReadLineSplit[iHASHIndex].lower()
+            asReadLineSplit[iHASHIndex] = asReadLineSplit[iHASHIndex].lower()
 
             # Iterate through each image and locate matching MD5 values
-            for eachFile in objDataFiles:
+            for eachFileObj in objDataFiles:
 
-                sMD5 = eachFile.Md5
+                sMD5 = eachFileObj.Md5
                 # calculate HASH value if not in Cellebrite UFED
                 if sMD5 == '':
-                    sMD5 = getMd5HashValue(eachFile)
+                    sMD5 = getMd5HashValue(eachFileObj)
 
-                if sMD5  == sReadLineSplit[iHASHIndex].strip():
+                if sMD5  == asReadLineSplit[iHASHIndex].strip():
 
                     # save image to images location
+                    iCount += 1
                     try:
-                        exportUFEDFile(eachFile, sFilesRelLoc)
+                        sSavedFileName = ''
+                        sSavedFileName = exportUFEDFile ( eachFileObj, sExportReportLoc + sFilesRelLoc, str(iCount) )
                     except:
                         print('Error writing file!')
 
-                    objFilesDetails.sCategory = sReadLineSplit[iCategoryIndex]
-                    objFilesDetails.sMD5 = sReadLineSplit[iHASHIndex]
-                    objFilesDetails.sFileName = eachFile.Name
-                    objFilesDetails.sFolderName = eachFile.Folder
-                    objFilesDetails.sCreationDate = str(eachFile.CreationTime)
-                    objFilesDetails.sRelSavedPathFileName = sFilesRelLoc + '\\'  + eachFile.Name
-                    objFilesDetails.sRelSavedPathThumbName  = sExportReportLoc + sThumbRelLoc + '\\' + eachFile.Name + '.png'
-                    os.system("c:\\ffmpeg -i " + objFilesDetails.sRelSavedPathFileName + " -vf scale=100:-1 " + objFilesDetails.sRelSavedPathThumbName) 
+                    objFilesDetails.sCategory = asReadLineSplit[iCategoryIndex]
+                    objFilesDetails.sMD5 = asReadLineSplit[iHASHIndex]
+                    objFilesDetails.sFileName = str(eachFileObj.Name)
+                    objFilesDetails.sFolderName = eachFileObj.Folder
+                    objFilesDetails.sCreationDate = str(eachFileObj.CreationTime)
+                    objFilesDetails.sRelSavedPathFileName = sFilesRelLoc + '\\'  + sSavedFileName
+                    objFilesDetails.sRelSavedPathThumbName  =  sThumbRelLoc + '\\' + sSavedFileName + '.png'
+                    
+                    if eachDataType == 'Video':
+                        os.system( sFFMPEGLocation + " -i \"" + sExportReportLoc  + objFilesDetails.sRelSavedPathFileName + "\" -ss 00:00:01.0 -vframes 1 -vf scale=100:-1 \"" + sExportReportLoc + objFilesDetails.sRelSavedPathThumbName + "\"")
+                    else:
+                        os.system( sFFMPEGLocation + " -i \"" + sExportReportLoc  + objFilesDetails.sRelSavedPathFileName + "\" -vf scale=100:-1 \"" + sExportReportLoc + objFilesDetails.sRelSavedPathThumbName + "\"") 
                     
                     lstFiles.append(objFilesDetails)
 
                 # end of sMD5 match
 
-        for each in lstFiles:
-            print(each.sFileName) 
-
-            # end of eachFile in DataFiles
+            # end of eachFileObj in DataFiles
        
+        # Write built HTML stream to file location
+        objHTMLWrite = clsHTMLWriter()
+        objHTMLWrite.WriteHTMLtoFile( lstFiles, sExportReportLoc + '\\' + sReportName + ' ' + eachDataType, bSeparateReports, 4)
+
         # end of read line CSV files
-        # close CSV file
+       
+       # close CSV file
         objCSVFile.close()
 
-    # Write built HTML stream to file location
-    #print(sExportReportLoc + '\\' +  sReportName)
-    #objHTMLWrite.WriteHTMLtoFile(sExportReportLoc + '\\' + sReportName, bSeparateReports, 4)
-    
+# *******************************************************************
+# ** Name:          bCheckFFMPEGExists
+# ** Purpose:       to check is ffmpeg.exe exists in specified location
+# ** Author:        Matthew KELLY
+# ** Date:          30/11/2016
+# ** Revisions:     none
+# ****************************************************************** 
+def bCheckFFMPEGExists(v_sLocationToCheck):
+
+    if os.path.isfile( v_sLocationToCheck ):
+        return True
+    else:
+        return False
+
 
 # *******************************************************************
 # ** Name:          getMd5HashValue
-# ** Purpose:       
+# ** Purpose:       as above
 # ** Author:        Matthew KELLY
-# ** Date:          
+# ** Date:          August 2016
 # ** Revisions:     none
 # ****************************************************************** 
 def getMd5HashValue (r_objImageFile):
@@ -147,56 +174,9 @@ def getMd5HashValue (r_objImageFile):
     except:
         return ''
 
-class ImageDetails():
-    
-    def __init__(self):
-        self.__sFileName = ''
-        self.__sFolderName = ''
-        self.__sCreationDate = ''
-        self.__sMD5 = ''
-        self.__sCategory = ''
-        self.__sRelSavedPathFileName = ''
-        self.__sRelSavedPathThumbName = ''
-
-    def sFileName(self, v_sData):
-        self.__sFileName = v_sData
-    def sFileName(self):
-        sFileName = self.__sFileName
-
-    def sFolderName(self, v_sData):
-        self.__sFolderName= v_sData
-    def sFolderName(self):
-        sFolderName = self.__sFolderName
-
-    def sCreationDate(self, v_sData):
-        self.__sCreationDate = v_sData
-    def sCreationDate(self):
-        sCreationDate = self.__sCreationDate
-
-    def sMD5(self, v_sData):
-        self.__sMD5 = v_sData
-    def sMD5(self):
-        sMD5 = self.__sMD5
-
-    def sCategory(self, v_sData):
-        self.__sCategory = v_sData
-    def sCategory(self):
-        sCategory = self.__sCategory
-
-    def sRelSavedPathFileName(self, v_sData):
-        self.__sRelSavedPathFileName = v_sData
-    def sRelSavedPathFileName(self):
-        sRelSavedPathFileName = self.__sRelSavedPathFileName
-
-    def sRelSavedPathThumbName(self, v_sData):
-        self.__sRelSavedPathThumbName = v_sData
-    def sRelSavedPathThumbName(self):
-        sRelSavedPathThumbName = self.__sRelSavedPathThumbName
-
-
 # *******************************************************************
 # ** Name:          IForm
-# ** Purpose:       
+# ** Purpose:       Displays a form to specify CSV file, Report Folder and Report Name
 # ** Author:        Unknown - MET Police
 # ** Date:          
 # ** Revisions:     06/05/2016 - removed hash library reference
@@ -283,38 +263,111 @@ class IForm(Form):
 # ** Author:        Unknown - MET Police
 # ** Date:          
 # ** Revisions:     06/05/2016 - removed hash library reference
+#                   30/11/2016 - added optional function argument to specify savename or use exisiting Image object name.
+#                              - Changed variables names to be more meaningful for ease of reading
 # ****************************************************************** 
-def exportUFEDFile(pic,path):
-    fileDataReadsize = 2**25
-    fileSize = pic.Size
-    if (fileSize > 2113929216):
-        MessageBox.Show("%s is greater than 2GB, please review manually. Filename stored in trace window" % (pic.Name),"Error")
-        print ("File %s is over 2gb in size, review manually" % (pic.Name))
+def exportUFEDFile( v_objImage, v_sFolderPathToSave, r_sFileNameToSaveLessExt='' ):
+    
+    # check size of ImageObject for successfull write operation
+    if ( v_objImage.Size > 2113929216 ):
+        MessageBox.Show("%s is greater than 2GB, please review manually. Filename stored in trace window" % (v_objImage.Name),"Error")
+        print ("File %s is over 2gb in size, review manually" % (v_objImage.Name))
         return "", ""
-    # mtk 06/05/2016 
-    # m = hashlib.md5()
-    filename = pic.Name 
-    filePath = os.path.join(path,filename)
-    ext = os.path.splitext(pic.Name)[1]
-    locateInvalidChar = ext.find("?")
-    if (locateInvalidChar != -1):
-        ext = ext[:locateInvalidChar]
+    
+    # check extention of object passed
+    sExt = os.path.splitext( v_objImage.Name )[1]
+    intLocateInvalidChar = sExt.find("?")
+    if ( intLocateInvalidChar != -1 ):
+        sExt = sExt[ :intLocateInvalidChar ]
+
+    # save filename as exisiting if none specified
+    if r_sFileNameToSaveLessExt == '':
+        r_sFileNameToSaveLessExt = v_objImage.Name 
+    else:
+        r_sFileNameToSaveLessExt = r_sFileNameToSaveLessExt + sExt
+
+    # specifiy size of data to read on each copy and full file-path name from folder and file specified
+    intFileDataReadSize = 2**25
+    sFullSaveFilePath = os.path.join( v_sFolderPathToSave, r_sFileNameToSaveLessExt )
+
+    # attempt to open file for write and copy data at size specified. (this will be while data read is greater than 0)
     try:
-        f = open(filePath,'wb')
-        pic.seek(0)
-        filedata = pic.read(fileDataReadsize)
-        while len(filedata) > 0:
-        # mtk 06/05/2016
-        # m.update(filedata)
-            f.write(filedata)
-            filedata = pic.read(fileDataReadsize)
-        pic.seek(0)
-        f.close()
+        objFileStream = open( sFullSaveFilePath, 'wb' )
+        v_objImage.seek(0)
+        binFileDataRead = v_objImage.read( intFileDataReadSize )
+        while len( binFileDataRead ) > 0:
+            objFileStream.write( binFileDataRead )
+            binFileDataRead = v_objImage.read( intFileDataReadSize )
+        # set object back to start and close filestream  
+        v_objImage.seek(0)
+        objFileStream.close()
+        return r_sFileNameToSaveLessExt
     except:
         return ""
 
 
 # # # class definitions # # # 
+
+# *******************************************************************
+# ** Name:          clsImageDetails
+# ** Purpose:       A class to store data regarding Image and Video recognised as a match through MD5 comparison.
+# ** Author:        Matthew KELLY
+# ** Date:          22/11/2016
+# ** Revisions:     
+# ******************************************************************
+class clsImageDetails():
+    
+    def __init__(self):
+        self.__sFileName = ''
+        self.__sFolderName = ''
+        self.__sCreationDate = ''
+        self.__sMD5 = ''
+        self.__sCategory = ''
+        self.__sRelSavedPathFileName = ''
+        self.__sRelSavedPathThumbName = ''
+
+    # Set and Get sFileName
+    def sFileName(self, v_sData):
+        self.__sFileName = v_sData
+    def sFileName(self):
+        sFileName = self.__sFileName
+
+    # Set and Get sFolderName
+    def sFolderName(self, v_sData):
+        self.__sFolderName= v_sData
+    def sFolderName(self):
+        sFolderName = self.__sFolderName
+
+    # Set and Get sCreationDate
+    def sCreationDate(self, v_sData):
+        self.__sCreationDate = v_sData
+    def sCreationDate(self):
+        sCreationDate = self.__sCreationDate
+
+    # Set and Get sMD5
+    def sMD5(self, v_sData):
+        self.__sMD5 = v_sData
+    def sMD5(self):
+        sMD5 = self.__sMD5
+
+    # Set and Get sCategory
+    def sCategory(self, v_sData):
+        self.__sCategory = v_sData
+    def sCategory(self):
+        sCategory = self.__sCategory
+
+    # Set and Get sRelSavedPathFileName
+    def sRelSavedPathFileName(self, v_sData):
+        self.__sRelSavedPathFileName = v_sData
+    def sRelSavedPathFileName(self):
+        sRelSavedPathFileName = self.__sRelSavedPathFileName
+
+    # Set and Get sRelSavedPathThumbName
+    def sRelSavedPathThumbName(self, v_sData):
+        self.__sRelSavedPathThumbName = v_sData
+    def sRelSavedPathThumbName(self):
+        sRelSavedPathThumbName = self.__sRelSavedPathThumbName
+
 
 # *******************************************************************
 # ** Name:          clsHTMLWriter
@@ -331,21 +384,32 @@ def exportUFEDFile(pic,path):
 # ******************************************************************
 class clsHTMLWriter:
 
+
     def __init__(self):
         self.__sHeading = 'South Yorkshire Police Case Report'
         self.__dicCategories = {}
 
+
     def AddHeadingTitle(self, v_sHeading):
         self.__sHeading = v_sHeading
 
-    def AddTableContentByKeyAsLists(self, v_sKey, v_sThumbRelativeLocation, v_sImageRelativeLocation, v_lstTableContent):
-        # nested dictionary for each Category image
-        sARefString = self.__GetImageHTMLReference(v_sThumbRelativeLocation, v_sImageRelativeLocation)
-        lstTemp = self.__sBuildHTMLTableLst(sARefString, v_lstTableContent)
-        self.__AddToDicCategories(v_sKey, lstTemp)
-     
-    def WriteHTMLtoFile(self, v_sFileLocation, v_bSeparateReports, v_iTableColumns=3):
+
+    def __BuildDicCategories(self, v_lstFiles):
+
+        for eachFileObj in v_lstFiles:
+            sCategory = eachFileObj.sCategory
+            sARefString = self.__GetImageHTMLReference( eachFileObj.sRelSavedPathThumbName, eachFileObj.sRelSavedPathFileName )
+            lstTableContent = [ 'File name: ' + eachFileObj.sFileName, 'In Folder: ' + eachFileObj.sFolderName, 'Creation Date: ' + eachFileObj.sCreationDate, 'MD5: ' + eachFileObj.sMD5 ]
+            lstTemp = self.__sBuildHTMLTableLst( sARefString, lstTableContent )
+            self.__AddToDicCategories( sCategory, lstTemp )
+
+
+    def WriteHTMLtoFile(self, r_lstFilesObj, v_sFileLocation, v_bSeparateReports, v_iTableColumns=3):
         
+        self.__BuildDicCategories(r_lstFilesObj)
+
+        
+
         if v_bSeparateReports == True:
             #separate report for each category
             for eachCategory in self.__dicCategories:
@@ -363,9 +427,9 @@ class clsHTMLWriter:
             filestream = open(v_sFileLocation + '.html', 'w')  
 
             sHTML = '<HTML><H1>' + self.__sHeading + '</H1>'
-
             for eachCategory in self.__dicCategories:
                 sHTML += self.__sBuildHTMLTableStringForCategory(eachCategory, v_iTableColumns)
+
             sHTML += '</HTML>'
 
             filestream.write(sHTML)
@@ -373,7 +437,7 @@ class clsHTMLWriter:
         
 
     # private functions
-    def __sBuildHTMLTableLst(self, v_sARefString, v_lstTableContent):
+    def __sBuildHTMLTableLst( self, v_sARefString, v_lstTableContent):
         lstTemp = []
         sHTMLBuiltString = '<TD><BR>' + v_sARefString + '<BR>'
         for sTableContent in v_lstTableContent:
@@ -382,7 +446,8 @@ class clsHTMLWriter:
         lstTemp = [sHTMLBuiltString]
         return (lstTemp)
 
-    def __sBuildHTMLTableStringForCategory(self, r_CurrentCategory, v_iTableColumns):
+
+    def __sBuildHTMLTableStringForCategory( self, r_CurrentCategory, v_iTableColumns):
 
         if self.__dicCategories[r_CurrentCategory] != '':
             sHTML = '<H2>' + r_CurrentCategory + '</H2>'
@@ -402,12 +467,14 @@ class clsHTMLWriter:
             sHTML = ''
         return sHTML
 
+
     def __AddToDicCategories(self, v_sKey, v_sHTMLBuiltString):
         lstTemp = [v_sHTMLBuiltString]
         if v_sKey in self.__dicCategories:
             self.__dicCategories[v_sKey] += lstTemp
         else:  
             self.__dicCategories[v_sKey] = lstTemp
+
 
     def __GetImageHTMLReference(self, v_sThumbRelativeLocation, v_sImageRelativeLocation):
         sHTMLBuiltString = ''
@@ -418,6 +485,7 @@ class clsHTMLWriter:
         sHTMLBuiltString += '<IMG src=.' + v_sThumbRelativeLocation + '>'
         sHTMLBuiltString += '</A>'
         return ( sHTMLBuiltString )
+
 
 # # # Start of script  # # #
 main()
