@@ -1,29 +1,32 @@
 # *******************************************************************
 # ** Name:          UFED create report from HASH values
-# ** Version:       v3.0
+# ** Version:       v3.1
 # ** Purpose:       A short script to open exported CSV separated export from NetClean of categorised images including MD5 value.
 #					The script will iterate through each image file witin an extraction and create a report with images located.
 # ** Returns:       None 
 # ** Variables:     N/A
 # ** Author:        Matthew KELLY
 # ** Date:          25/11/2015
-# ** Revisions:     v 3.0 adds Class to store each file match data to later write information to HTML report
-#                         uses ffmpeg to create thumbnails for Images and Videos.
+# ** Revisions:     v 3.0 - adds Class to store each file match data to later write information to HTML report
+#                         - uses ffmpeg to create thumbnails for Images and Videos.
+#                   v 3.1 - amend error caused with '\' within specified file name i.e Case \ Force specific
+#                         - sort out logic for multiple instances of MD5 or Images
+#                         - continually update comments  
 # ** WishList:		Add functionality to form to request file-data information for report.
 # **				Error logging - try/catch in main()?
 # **                file located and not-located or duplicates will be logged.
 # **                Export clsHTMLWriter to separate module for generic use.
 # ******************************************************************
 
-# # # Imports # # #
+                                # # # Imports # # #
 import os
 import hashlib
 import clr
 clr.AddReference("System.Windows.Forms")
 from System.Windows.Forms import *
 from System.Drawing import *
-
-# # # function definitions # # # 
+import sys
+                                # # # function definitions # # # 
 
 # *******************************************************************
 # ** Name:          main()
@@ -38,6 +41,7 @@ from System.Drawing import *
 #                           - added further loop for Images AND Videos in UFED ds object
 #                           - function uses ffmpeg for thumbnail creation. Added check for ffmpeg existence and alternative calls for Pictures and Videos
 # ******************************************************************
+
 def main():
 
     # this variable will be passed to DOS shell. Beware literals! i.e spaces in file/folder names
@@ -45,8 +49,7 @@ def main():
     bCheck = bCheckFFMPEGExists( sFFMPEGLocation )
     if bCheck != True:
         MessageBox.Show ("Program cannot find the executable ffmpeg.exe in the root of C: and will terminate prematurely. Sorry!", "ffmpeg.exe dependency!", MessageBoxButtons.OK, MessageBoxIcon.Stop)
-        # This works but for the wrong reasons! change
-        quit()
+        sys.exit()
 
     # Get location of CSV file, path for report and report file name
     frmCSVFolder = IForm()
@@ -71,39 +74,61 @@ def main():
         asReadLineSplit = sReadLine.split(',')
         iLen = len(asReadLineSplit)
         asReadLineSplit[iLen-1] = asReadLineSplit[iLen-1].strip()
-        iHASHIndex = asReadLineSplit.index('Hash Value')
-        iCategoryIndex = asReadLineSplit.index('Category')
+        try:
+            iHASHIndex = asReadLineSplit.index('Hash Value')
+            iCategoryIndex = asReadLineSplit.index('Category')
+        except:
+            MessageBox.Show ("The specified CSV file does not contain the column headings 'Hash Value' or 'Category'. \
+            Please edit this in order for this script to work corectly and identify relevant data for comparison and report creation.", 
+            "You fuckwit!", MessageBoxButtons.OK, MessageBoxIcon.Stop)
+            sys.exit()
 
+        # 02/12/2016 Tag added at request AT
+        try:
+            iTagIndex = asReadLineSplit.index('Tags')
+        except:
+            iTagIndex = -1
+
+        # assign Images or Video to DataFiles object for MD5 comparison
         objDataFiles = ds.DataFiles[eachDataType]
+        # These will be stored in the relevant (relative) directory...
         sFilesRelLoc =   '\\' + eachDataType
+        # ... and created
         os.mkdir(sExportReportLoc + sFilesRelLoc)
         
+        # store the matching DataFiles in a lst of Objects
         lstFiles = []
 
+        # read the CSV file sequentially line by line until no more data
         while True:
-
-            # Class to store details of each MD5 match located
-            objFilesDetails = clsImageDetails()
 
             # When the last line is read this loop will break
             sReadLine = objCSVFile.readline()
             if not sReadLine:
                 break
 
+            # Class to store details of each MD5 match located
+            objFilesDetails = clsImageDetails()
             asReadLineSplit = sReadLine.split(',')    
 
             # convert HASH value to lowercase for match in UFED reader
             asReadLineSplit[iHASHIndex] = asReadLineSplit[iHASHIndex].lower()
+            asReadLineSplit[iHASHIndex] = asReadLineSplit[iHASHIndex].strip()
 
             # Iterate through each image and locate matching MD5 values
             for eachFileObj in objDataFiles:
+
+                # check whether or not the MD5 value has already been searched for. If so, break loop
+                if bCheckIfMD5Exists( lstFiles, asReadLineSplit[iHASHIndex] )
+                    break
 
                 sMD5 = eachFileObj.Md5
                 # calculate HASH value if not in Cellebrite UFED
                 if sMD5 == '':
                     sMD5 = getMd5HashValue(eachFileObj)
 
-                if sMD5  == asReadLineSplit[iHASHIndex].strip():
+                
+                if sMD5  == asReadLineSplit[iHASHIndex]:
 
                     # save image to images location
                     iCount += 1
@@ -120,6 +145,8 @@ def main():
                     objFilesDetails.sCreationDate = str(eachFileObj.CreationTime)
                     objFilesDetails.sRelSavedPathFileName = sFilesRelLoc + '\\'  + sSavedFileName
                     objFilesDetails.sRelSavedPathThumbName  =  sThumbRelLoc + '\\' + sSavedFileName + '.png'
+                    if iTagIndex > 0:
+                        objFilesDetails.sTagsNotes = asReadLineSplit[iTagIndex]
                     
                     if eachDataType == 'Video':
                         os.system( sFFMPEGLocation + " -i \"" + sExportReportLoc  + objFilesDetails.sRelSavedPathFileName + "\" -ss 00:00:01.0 -vframes 1 -vf scale=100:-1 \"" + sExportReportLoc + objFilesDetails.sRelSavedPathThumbName + "\"")
@@ -155,6 +182,14 @@ def bCheckFFMPEGExists(v_sLocationToCheck):
     else:
         return False
 
+def bCheckIfMD5Exists(v_lstFileDetails, v_sMD5ToCheck):
+    bReturnValue = False
+    for eachFile in lstFileDetails:
+        if eachFile.MD5 == v_sMD5ToCheck:
+            bReturnValue = True
+            break
+    return bReturnValue
+
 
 # *******************************************************************
 # ** Name:          getMd5HashValue
@@ -173,6 +208,57 @@ def getMd5HashValue (r_objImageFile):
         return hexMD5.upper
     except:
         return ''
+
+# *******************************************************************
+# ** Name:          exportUFEDFile
+# ** Purpose:       Takes an Image from ds in UFED Cellebrite and exports to file-path specified
+# ** Author:        Unknown - MET Police
+# ** Date:          
+# ** Revisions:     06/05/2016 - removed hash library reference
+#                   30/11/2016 - added optional function argument to specify savename or use exisiting Image object name.
+#                              - Changed variables names to be more meaningful for ease of reading
+# ****************************************************************** 
+def exportUFEDFile( v_objImage, v_sFolderPathToSave, r_sFileNameToSaveLessExt='' ):
+    
+    # check size of ImageObject for successfull write operation
+    if ( v_objImage.Size > 2113929216 ):
+        MessageBox.Show("%s is greater than 2GB, please review manually. Filename stored in trace window" % (v_objImage.Name),"Error")
+        print ("File %s is over 2gb in size, review manually" % (v_objImage.Name))
+        return "", ""
+    
+    # check extention of object passed
+    sExt = os.path.splitext( v_objImage.Name )[1]
+    intLocateInvalidChar = sExt.find("?")
+    if ( intLocateInvalidChar != -1 ):
+        sExt = sExt[ :intLocateInvalidChar ]
+
+    # save filename as exisiting if none specified
+    if r_sFileNameToSaveLessExt == '':
+        r_sFileNameToSaveLessExt = v_objImage.Name 
+    else:
+        r_sFileNameToSaveLessExt = r_sFileNameToSaveLessExt + sExt
+
+    # specifiy size of data to read on each copy and full file-path name from folder and file specified
+    intFileDataReadSize = 2**25
+    sFullSaveFilePath = os.path.join( v_sFolderPathToSave, r_sFileNameToSaveLessExt )
+
+    # attempt to open file for write and copy data at size specified. (this will be while data read is greater than 0)
+    try:
+        objFileStream = open( sFullSaveFilePath, 'wb' )
+        v_objImage.seek(0)
+        binFileDataRead = v_objImage.read( intFileDataReadSize )
+        while len( binFileDataRead ) > 0:
+            objFileStream.write( binFileDataRead )
+            binFileDataRead = v_objImage.read( intFileDataReadSize )
+        # set object back to start and close filestream  
+        v_objImage.seek(0)
+        objFileStream.close()
+        return r_sFileNameToSaveLessExt
+    except:
+        return ""
+
+
+                                # # # class definitions # # # 
 
 # *******************************************************************
 # ** Name:          IForm
@@ -256,58 +342,6 @@ class IForm(Form):
                     MessageBox.Show( "The specified report folder already exists, please choose another." , "Invalid Directory" )
                     pass
 
-
-# *******************************************************************
-# ** Name:          exportUFEDFile
-# ** Purpose:       Takes an Image from ds in UFED Cellebrite and exports to file-path specified
-# ** Author:        Unknown - MET Police
-# ** Date:          
-# ** Revisions:     06/05/2016 - removed hash library reference
-#                   30/11/2016 - added optional function argument to specify savename or use exisiting Image object name.
-#                              - Changed variables names to be more meaningful for ease of reading
-# ****************************************************************** 
-def exportUFEDFile( v_objImage, v_sFolderPathToSave, r_sFileNameToSaveLessExt='' ):
-    
-    # check size of ImageObject for successfull write operation
-    if ( v_objImage.Size > 2113929216 ):
-        MessageBox.Show("%s is greater than 2GB, please review manually. Filename stored in trace window" % (v_objImage.Name),"Error")
-        print ("File %s is over 2gb in size, review manually" % (v_objImage.Name))
-        return "", ""
-    
-    # check extention of object passed
-    sExt = os.path.splitext( v_objImage.Name )[1]
-    intLocateInvalidChar = sExt.find("?")
-    if ( intLocateInvalidChar != -1 ):
-        sExt = sExt[ :intLocateInvalidChar ]
-
-    # save filename as exisiting if none specified
-    if r_sFileNameToSaveLessExt == '':
-        r_sFileNameToSaveLessExt = v_objImage.Name 
-    else:
-        r_sFileNameToSaveLessExt = r_sFileNameToSaveLessExt + sExt
-
-    # specifiy size of data to read on each copy and full file-path name from folder and file specified
-    intFileDataReadSize = 2**25
-    sFullSaveFilePath = os.path.join( v_sFolderPathToSave, r_sFileNameToSaveLessExt )
-
-    # attempt to open file for write and copy data at size specified. (this will be while data read is greater than 0)
-    try:
-        objFileStream = open( sFullSaveFilePath, 'wb' )
-        v_objImage.seek(0)
-        binFileDataRead = v_objImage.read( intFileDataReadSize )
-        while len( binFileDataRead ) > 0:
-            objFileStream.write( binFileDataRead )
-            binFileDataRead = v_objImage.read( intFileDataReadSize )
-        # set object back to start and close filestream  
-        v_objImage.seek(0)
-        objFileStream.close()
-        return r_sFileNameToSaveLessExt
-    except:
-        return ""
-
-
-# # # class definitions # # # 
-
 # *******************************************************************
 # ** Name:          clsImageDetails
 # ** Purpose:       A class to store data regarding Image and Video recognised as a match through MD5 comparison.
@@ -325,6 +359,7 @@ class clsImageDetails():
         self.__sCategory = ''
         self.__sRelSavedPathFileName = ''
         self.__sRelSavedPathThumbName = ''
+        self.__sTagsNotes = ''
 
     # Set and Get sFileName
     def sFileName(self, v_sData):
@@ -368,6 +403,11 @@ class clsImageDetails():
     def sRelSavedPathThumbName(self):
         sRelSavedPathThumbName = self.__sRelSavedPathThumbName
 
+    # Set and Get sTags text
+    def sTagsNotes(self, v_sData):
+        self.__sTagsNotes = v_sData
+    def sTagsNotes(self):
+        sTagsNotes = self.__sTagsNotes
 
 # *******************************************************************
 # ** Name:          clsHTMLWriter
@@ -384,7 +424,6 @@ class clsImageDetails():
 # ******************************************************************
 class clsHTMLWriter:
 
-
     def __init__(self):
         self.__sHeading = 'South Yorkshire Police Case Report'
         self.__dicCategories = {}
@@ -400,6 +439,9 @@ class clsHTMLWriter:
             sCategory = eachFileObj.sCategory
             sARefString = self.__GetImageHTMLReference( eachFileObj.sRelSavedPathThumbName, eachFileObj.sRelSavedPathFileName )
             lstTableContent = [ 'File name: ' + eachFileObj.sFileName, 'In Folder: ' + eachFileObj.sFolderName, 'Creation Date: ' + eachFileObj.sCreationDate, 'MD5: ' + eachFileObj.sMD5 ]
+            # added at request of AT 02/12/2016
+            if eachFileObj.sTagsNotes != '':
+                lstTableContent.append ( 'Tag notes: ' + eachFileObj.sTagsNotes )
             lstTemp = self.__sBuildHTMLTableLst( sARefString, lstTableContent )
             self.__AddToDicCategories( sCategory, lstTemp )
 
@@ -408,13 +450,16 @@ class clsHTMLWriter:
         
         self.__BuildDicCategories(r_lstFilesObj)
 
-        
+
 
         if v_bSeparateReports == True:
             #separate report for each category
             for eachCategory in self.__dicCategories:
 
-                filestream = open(v_sFileLocation + ' ' + eachCategory + '.html', 'w')
+                sReportFileName = self.__sPurgeFileName(v_sFileLocation + ' ' + eachCategory + '.html')
+
+                # 01/12/2016 - issues creating report when Case \ Force specific. Need to parse eachCategory text to cater for special characters.
+                filestream = open(sReportFileName, 'w')
 
                 sHTML = '<HTML><H1>' + self.__sHeading + '</H1>'
                 sHTML += self.__sBuildHTMLTableStringForCategory(eachCategory, v_iTableColumns)
@@ -423,8 +468,11 @@ class clsHTMLWriter:
                 filestream.write(sHTML)
                 filestream.close()
         else:
+            
+            sReportFileName = self.__sPurgeFileName(v_sFileLocation + '.html')
+            
             # one report for each category
-            filestream = open(v_sFileLocation + '.html', 'w')  
+            filestream = open(sReportFileName, 'w')  
 
             sHTML = '<HTML><H1>' + self.__sHeading + '</H1>'
             for eachCategory in self.__dicCategories:
@@ -487,5 +535,12 @@ class clsHTMLWriter:
         return ( sHTMLBuiltString )
 
 
-# # # Start of script  # # #
+    def __sPurgeFileName(v_sFileName):
+        sTempString = v_sFileName
+        sTempString = sTempString.replace("\\", "")
+        sTempString = sTempString.replace("/", "")
+        return sTempString
+
+                        # # # Start of script  # # #
+
 main()
