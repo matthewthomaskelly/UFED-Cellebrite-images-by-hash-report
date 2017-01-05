@@ -1,6 +1,6 @@
 # *******************************************************************
 # ** Name:          UFED create report from HASH values
-# ** Version:       v3.1
+# ** Version:       v3.2
 # ** Purpose:       A short script to open exported CSV separated export from NetClean of categorised images including MD5 value.
 #					The script will iterate through each image file witin an extraction and create a report with images located.
 # ** Returns:       None 
@@ -12,6 +12,7 @@
 #                   v 3.1 - amend error caused with '\' within specified file name i.e Case \ Force specific
 #                         - sort out logic for multiple instances of MD5 or Images
 #                         - continually update comments  
+#                   v 3.2 - look at coding for building HTML and separate Accessible and Incaccessable
 # ** WishList:		Add functionality to form to request file-data information for report.
 # **				Error logging - try/catch in main()?
 # **                file located and not-located or duplicates will be logged.
@@ -119,7 +120,7 @@ def main():
             for eachFileObj in objDataFiles:
 
                 # check whether or not the MD5 value has already been searched for. If so, break loop
-                if bCheckIfMD5Exists( lstFiles, asReadLineSplit[iHASHIndex] )
+                if bCheckIfMD5Exists( lstFiles, asReadLineSplit[iHASHIndex] ):
                     break
 
                 sMD5 = eachFileObj.Md5
@@ -147,6 +148,8 @@ def main():
                     objFilesDetails.sRelSavedPathThumbName  =  sThumbRelLoc + '\\' + sSavedFileName + '.png'
                     if iTagIndex > 0:
                         objFilesDetails.sTagsNotes = asReadLineSplit[iTagIndex]
+                    else:
+                        objFilesDetails.sTagsNotes = '' 
                     
                     if eachDataType == 'Video':
                         os.system( sFFMPEGLocation + " -i \"" + sExportReportLoc  + objFilesDetails.sRelSavedPathFileName + "\" -ss 00:00:01.0 -vframes 1 -vf scale=100:-1 \"" + sExportReportLoc + objFilesDetails.sRelSavedPathThumbName + "\"")
@@ -158,14 +161,37 @@ def main():
                 # end of sMD5 match
 
             # end of eachFileObj in DataFiles
-       
+              
         # Write built HTML stream to file location
-        objHTMLWrite = clsHTMLWriter()
+        objHTMLWrite = clsHTMLWriter()      
         objHTMLWrite.WriteHTMLtoFile( lstFiles, sExportReportLoc + '\\' + sReportName + ' ' + eachDataType, bSeparateReports, 4)
+        
+        sAppSpecificFolders = ""
+        sAccessibleFolders = ""
+        sNonAccessibleFolders = ""
+        bLoop = True
+        while bLoop:
+
+            r = MessageBox.Show( "Would you like to specifiy folder locations for Accessible, Non-Accessible and Application specific files?", "Recompile reports", MessageBoxButtons.YesNo, MessageBoxIcon.Question )
+            if r == DialogResult.Yes:
+                frmSpecify = JForm()
+                frmSpecify.sAppSpecificFolders = sAppSpecificFolders
+                frmSpecify.sAccessibleFolders = sAccessibleFolders
+                frmSpecify.sNonAccessibleFolders = sNonAccessibleFolders
+                Application.Run( frmSpecify )
+                sAppSpecificFolders = frmSpecify.sAppSpecificFolders
+                sAccessibleFolders = frmSpecify.sAccessibleFolders
+                sNonAccessibleFolders = frmSpecify.sNonAccessibleFolders
+                # form causes UFED to crash. Is this due to garbage disposal as arguably this form is not the main API!?
+                frmSpecify.Dispose()
+                objHTMLWrite.setSearchTermFolders( sAppSpecificFolders.split(','), sAccessibleFolders.split(','), sNonAccessibleFolders.split(',') )
+                objHTMLWrite.WriteHTMLtoFile( lstFiles, sExportReportLoc + '\\' + sReportName + ' ' + eachDataType, bSeparateReports, 4)
+            else:
+                bLoop = False
 
         # end of read line CSV files
        
-       # close CSV file
+        # close CSV file
         objCSVFile.close()
 
 # *******************************************************************
@@ -184,12 +210,11 @@ def bCheckFFMPEGExists(v_sLocationToCheck):
 
 def bCheckIfMD5Exists(v_lstFileDetails, v_sMD5ToCheck):
     bReturnValue = False
-    for eachFile in lstFileDetails:
-        if eachFile.MD5 == v_sMD5ToCheck:
+    for eachFile in v_lstFileDetails:
+        if eachFile.sMD5 == v_sMD5ToCheck:
             bReturnValue = True
             break
     return bReturnValue
-
 
 # *******************************************************************
 # ** Name:          getMd5HashValue
@@ -288,10 +313,10 @@ class IForm(Form):
                 self.txtCSVFileName.Width = 450
 
                 #add textbox for report folder location
-                self.txtReportFolderLocation = TextBox()
-                self.txtReportFolderLocation.Text = "Proposed report folder Path goes here"
-                self.txtReportFolderLocation.Location = Point(10,35)
-                self.txtReportFolderLocation.Width = 450
+                self.txtAppSpecificFolders = TextBox()
+                self.txtAppSpecificFolders.Text = "Proposed report folder Path goes here"
+                self.txtAppSpecificFolders.Location = Point(10,35)
+                self.txtAppSpecificFolders.Width = 450
 
                 #add textbox for report folder location
                 self.txtReportFileName = TextBox()
@@ -307,7 +332,7 @@ class IForm(Form):
                 self.chkSeparateReports.Checked = False
 
                 self.Controls.Add(self.txtCSVFileName)
-                self.Controls.Add(self.txtReportFolderLocation)
+                self.Controls.Add(self.txtAppSpecificFolders)
                 self.Controls.Add(self.txtReportFileName)
                 self.Controls.Add(self.btnOk)
                 self.Controls.Add(self.chkSeparateReports)
@@ -321,7 +346,7 @@ class IForm(Form):
         def OKPressed(self, sender, args):
 
                 sCSVFile = self.txtCSVFileName.Text
-                sReportFolder = self.txtReportFolderLocation.Text
+                sReportFolder = self.txtAppSpecificFolders.Text
                 sReportFile = self.txtReportFileName.Text
                 bSeparateReports = self.chkSeparateReports.Checked
 
@@ -341,6 +366,99 @@ class IForm(Form):
                 else:
                     MessageBox.Show( "The specified report folder already exists, please choose another." , "Invalid Directory" )
                     pass
+
+# *******************************************************************
+# ** Name:          JForm
+# ** Purpose:       Displays a form to specify known folder locations for Accessible, Application related, 
+#                    and Non-accessible files
+# ** Author:        Matthew KELLY
+# ** Date:          07/12/2016
+# ** Revisions:     Amended JForm as interface
+# ****************************************************************** 
+class JForm(Form):
+
+        def __init__(self):
+                self.Text = "Folder Locations. "
+                self.Height = 210
+                self.Width = 650
+
+                #add button
+                self.btnOk = Button()
+                self.btnOk.Text = "&OK"
+                self.btnOk.Location = Point(10, 140)
+                self.btnOk.Click += self.OKPressed
+
+                # overarching label
+                self.lblInstructions = Label()
+                self.lblInstructions.Text = "Please specify folder locations from known Accessible, Application specific and Non-Accessible files. Remainder will be classified as Unknown. \
+ Please separate the individual folder locations with a single comma. \
+ Partial folder name contents will suffice."
+                self.lblInstructions.Width = 600
+                self.lblInstructions.Height = 40
+                self.lblInstructions.Location = Point(10,10)
+                
+                # label for Accessible folders
+                self.lblAccessibleFolders = Label()
+                self.lblAccessibleFolders.Text = "Accessible folders: "
+                self.lblAccessibleFolders.Width = 150
+                self.lblAccessibleFolders.Location = Point(10,60)
+
+                #add textbox for Accessible folders
+                self.txtAccessibleFolders = TextBox()
+                self.txtAccessibleFolders.Text = ""
+                self.txtAccessibleFolders.Location = Point(160,60)
+                self.txtAccessibleFolders.Width = 450
+
+                # label for Application specific folders
+                self.lblAppSpecificFolders = Label()
+                self.lblAppSpecificFolders.Text = "Application specific folders: "
+                self.lblAppSpecificFolders.Width = 150
+                self.lblAppSpecificFolders.Location = Point(10,85)
+
+                #add textbox for Application specific folders
+                self.txtAppSpecificFolders = TextBox()
+                self.txtAppSpecificFolders.Text = ""
+                self.txtAppSpecificFolders.Location = Point(160,85)
+                self.txtAppSpecificFolders.Width = 450
+
+                # label for Non-Accessible folders
+                self.lblNonAccessibleFolders = Label()
+                self.lblNonAccessibleFolders.Text = "Non-Accessible folders: "
+                self.lblNonAccessibleFolders.Width = 150
+                self.lblNonAccessibleFolders.Location = Point(10,110)
+
+                #add textbox for Non-Accessible folders
+                self.txtNonAccessibleFolders = TextBox()
+                self.txtNonAccessibleFolders.Text = ""
+                self.txtNonAccessibleFolders.Location = Point(160,110)
+                self.txtNonAccessibleFolders.Width = 450
+
+                self.Controls.Add(self.lblInstructions)
+                self.Controls.Add(self.lblAccessibleFolders)
+                self.Controls.Add(self.txtAccessibleFolders)
+                self.Controls.Add(self.lblAppSpecificFolders)
+                self.Controls.Add(self.txtAppSpecificFolders)
+                self.Controls.Add(self.lblNonAccessibleFolders)
+                self.Controls.Add(self.txtNonAccessibleFolders)
+                self.Controls.Add(self.btnOk)
+                self.CenterToScreen()
+
+                self.sAccessibleFolders = ""
+                self.sAppSpecificFolders = ""  
+                self.sNonAccessibleFolders = ""
+   
+        def OnLoad(self, sender):
+                self.txtAccessibleFolders.Text = self.sAccessibleFolders
+                self.txtAppSpecificFolders.Text = self.sAppSpecificFolders
+                self.txtNonAccessibleFolders.Text = self.sNonAccessibleFolders
+
+        def OKPressed(self, sender, args):
+
+                self.sAppSpecificFolders = self.txtAppSpecificFolders.Text
+                self.sAccessibleFolders = self.txtAccessibleFolders.Text
+                self.sNonAccessibleFolders = self.txtNonAccessibleFolders.Text
+                self.Close()
+
 
 # *******************************************************************
 # ** Name:          clsImageDetails
@@ -427,13 +545,24 @@ class clsHTMLWriter:
     def __init__(self):
         self.__sHeading = 'South Yorkshire Police Case Report'
         self.__dicCategories = {}
+        self.__lstAccessibleSearchTerms = []
+        self.__lstNonAccessibleSearchTerms = []
+        self.__lstAppSpecificSearchTerms = []
 
 
     def AddHeadingTitle(self, v_sHeading):
         self.__sHeading = v_sHeading
 
 
+    def setSearchTermFolders(self, lstAppSpecific, lstAccessibleSpecific, lstNonAccessible):
+        self.__lstAppSpecificSearchTerms = lstAppSpecific
+        self.__lstAccessibleSearchTerms = lstAccessibleSpecific
+        self.__lstNonAccessibleSearchTerms = lstNonAccessible
+
+
     def __BuildDicCategories(self, v_lstFiles):
+
+        self.__dicCategories = {}
 
         for eachFileObj in v_lstFiles:
             sCategory = eachFileObj.sCategory
@@ -451,12 +580,11 @@ class clsHTMLWriter:
         self.__BuildDicCategories(r_lstFilesObj)
 
 
-
         if v_bSeparateReports == True:
             #separate report for each category
             for eachCategory in self.__dicCategories:
 
-                sReportFileName = self.__sPurgeFileName(v_sFileLocation + ' ' + eachCategory + '.html')
+                sReportFileName = v_sFileLocation + ' ' + self.__sPurgeFileName( eachCategory + '.html')
 
                 # 01/12/2016 - issues creating report when Case \ Force specific. Need to parse eachCategory text to cater for special characters.
                 filestream = open(sReportFileName, 'w')
@@ -469,7 +597,7 @@ class clsHTMLWriter:
                 filestream.close()
         else:
             
-            sReportFileName = self.__sPurgeFileName(v_sFileLocation + '.html')
+            sReportFileName = v_sFileLocation + '.html'
             
             # one report for each category
             filestream = open(sReportFileName, 'w')  
@@ -498,19 +626,83 @@ class clsHTMLWriter:
     def __sBuildHTMLTableStringForCategory( self, r_CurrentCategory, v_iTableColumns):
 
         if self.__dicCategories[r_CurrentCategory] != '':
+            # main HTML string for inclusion in report
             sHTML = '<H2>' + r_CurrentCategory + '</H2>'
-            sHTML += '<TABLE>' + '<TR>'
-            iCount = 0
+            
+            # Counters for number of inaccessible or accessible files
+            iCountAccessible = 0
+            iCountAppSpecific = 0
+            iCountNonAccessible = 0
+            iCountUnknown = 0
+            # temporary HTML fields for accessible or Inaccessible HTML strings to be added to sHTML at end of loop
+            sHTMLAccessible = '<H3> Known Accessible </H3> <TABLE><TR>'
+            sHTMLAppSpecific = '<H3> Application Specific </H3> <TABLE><TR>'
+            sHTMLNonAccessible = '<H3> Non-Accessible </H3> <TABLE><TR>'
+            sHTMLUnknown = '<H3> Unknown </H3> <TABLE><TR>'
+
+            # dic Categories contains a dic of lists for each image
             for eachSubLst in self.__dicCategories[r_CurrentCategory]:
-                iCount += 1
                 for eachListValue in eachSubLst:
-                    # 10/11/2016 - added coding to append count of images per category into HTML. Assumes that first lst value will be image </A>
-                    iIndex = eachListValue.find('</A>')
-                    eachListValue = eachListValue[:iIndex+4] + '<BR>' + str(iCount) + eachListValue[iIndex+4:]                                    
-                    sHTML += eachListValue
-                if iCount % v_iTableColumns == 0:
-                    sHTML += '</TR><TR>'
-            sHTML += '</TR></TABLE>'
+                    
+                    bAccessible = False
+                    bApplicationSpecific = False
+                    bNonAccessible = False
+                    
+                    for eachSearchTerm in self.__lstAppSpecificSearchTerms:
+                            # check for all search terms specified in accessible fields
+                            if eachListValue.find( eachSearchTerm.strip() ) > 0:
+                                print ('true')
+                                bApplicationSpecific = True
+                                break
+
+                    if bApplicationSpecific == False:
+                        for eachSearchTerm in self.__lstNonAccessibleSearchTerms:
+                            # check for all search terms specified in accessible fields
+                            if eachListValue.find( eachSearchTerm.strip() ) > 0:
+                                bNonAccessible = True
+                                break
+
+                    if bApplicationSpecific == False and bNonAccessible == False:
+                        for eachSearchTerm in self.__lstAccessibleSearchTerms:
+                            # check for all search terms specified in accessible fields
+                            if eachListValue.find( eachSearchTerm.strip() ) > 0:
+                                bAccessible = True
+                                break
+
+                    if bApplicationSpecific:
+                        iCountAppSpecific += 1
+                        # coding to append count of images per category into HTML. Assumes that first lst value will be image </A>
+                        iIndex = eachListValue.find('</A>')
+                        eachListValue = eachListValue[:iIndex+4] + '<BR>' + str(iCountAppSpecific) + eachListValue[iIndex+4:]                                    
+                        sHTMLAppSpecific += eachListValue
+                        if iCountAppSpecific % v_iTableColumns == 0:
+                            sHTMLAppSpecific += '</TR><TR>'
+                    elif bAccessible:
+                        iCountAccessible += 1
+                        # coding to append count of images per category into HTML. Assumes that first lst value will be image </A>
+                        iIndex = eachListValue.find('</A>')
+                        eachListValue = eachListValue[:iIndex+4] + '<BR>' + str(iCountAccessible) + eachListValue[iIndex+4:]                                    
+                        sHTMLAccessible += eachListValue
+                        if iCountAccessible % v_iTableColumns == 0:
+                            sHTMLAccessible += '</TR><TR>'
+                    elif bNonAccessible:
+                        iCountNonAccessible += 1
+                        # coding to append count of images per category into HTML. Assumes that first lst value will be image </A>
+                        iIndex = eachListValue.find('</A>')
+                        eachListValue = eachListValue[:iIndex+4] + '<BR>' + str(iCountNonAccessible) + eachListValue[iIndex+4:]                                    
+                        sHTMLNonAccessible += eachListValue
+                        if iCountNonAccessible % v_iTableColumns == 0:
+                            sHTMLNonAccessible += '</TR><TR>'
+                    else:
+                        iCountUnknown += 1
+                        # coding to append count of images per category into HTML. Assumes that first lst value will be image </A>
+                        iIndex = eachListValue.find('</A>')
+                        eachListValue = eachListValue[:iIndex+4] + '<BR>' + str(iCountUnknown) + eachListValue[iIndex+4:]                                    
+                        sHTMLUnknown += eachListValue
+                        if iCountUnknown % v_iTableColumns == 0:
+                            sHTMLUnknown += '</TR><TR>'
+        
+            sHTML += sHTMLAccessible + '</TR></TABLE>' + sHTMLAppSpecific + '</TR></TABLE>' + sHTMLNonAccessible + '</TR></TABLE>' + sHTMLUnknown + '</TR></TABLE>' 
         else:
             sHTML = ''
         return sHTML
@@ -535,7 +727,7 @@ class clsHTMLWriter:
         return ( sHTMLBuiltString )
 
 
-    def __sPurgeFileName(v_sFileName):
+    def __sPurgeFileName(self, v_sFileName):
         sTempString = v_sFileName
         sTempString = sTempString.replace("\\", "")
         sTempString = sTempString.replace("/", "")
