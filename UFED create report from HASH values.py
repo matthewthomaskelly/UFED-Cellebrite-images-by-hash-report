@@ -1,6 +1,6 @@
 # *******************************************************************
 # ** Name:          UFED create report from HASH values
-# ** Version:       v3.2
+# ** Version:       v3.3
 # ** Purpose:       A short script to open exported CSV separated export from NetClean of categorised images including MD5 value.
 #					The script will iterate through each image file witin an extraction and create a report with images located.
 # ** Returns:       None 
@@ -13,6 +13,7 @@
 #                         - sort out logic for multiple instances of MD5 or Images
 #                         - continually update comments  
 #                   v 3.2 - look at coding for building HTML and separate Accessible and Incaccessable
+#                   v 3.3 - Small amendment with Hash Value category heading. Put this back to prior version and changed heading to MD5 as everyone should be using Griffeye in SYP
 # ** WishList:		Add functionality to form to request file-data information for report.
 # **				Error logging - try/catch in main()?
 # **                file located and not-located or duplicates will be logged.
@@ -63,6 +64,7 @@ def main():
     sThumbRelLoc = '\\Thumbs'
     os.mkdir(sExportReportLoc + sThumbRelLoc)
 
+    # specified Cellebrite data files
     lstDataFiles = ['Image', 'Video']
 
     # loop through each specified data files (will probably remain at Images and Videos only!)
@@ -75,14 +77,9 @@ def main():
         asReadLineSplit = sReadLine.split(',')
         iLen = len(asReadLineSplit)
         asReadLineSplit[iLen-1] = asReadLineSplit[iLen-1].strip()
-        try:
-            iHASHIndex = asReadLineSplit.index('Hash Value')
-            iCategoryIndex = asReadLineSplit.index('Category')
-        except:
-            MessageBox.Show ("The specified CSV file does not contain the column headings 'Hash Value' or 'Category'. \
-            Please edit this in order for this script to work corectly and identify relevant data for comparison and report creation.", 
-            "You fuckwit!", MessageBoxButtons.OK, MessageBoxIcon.Stop)
-            sys.exit()
+        iHASHIndex = asReadLineSplit.index('MD5')
+        iCategoryIndex = asReadLineSplit.index('Category')
+
 
         # 02/12/2016 Tag added at request AT
         try:
@@ -193,6 +190,9 @@ def main():
        
         # close CSV file
         objCSVFile.close()
+
+# end of main()
+
 
 # *******************************************************************
 # ** Name:          bCheckFFMPEGExists
