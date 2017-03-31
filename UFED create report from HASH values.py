@@ -1,6 +1,6 @@
 # *******************************************************************
 # ** Name:          UFED create report from HASH values
-# ** Version:       v3.4
+# ** Version:       v3.5
 # ** Purpose:       A short script to open exported CSV separated export from NetClean of categorised images including MD5 value.
 #					The script will iterate through each image file witin an extraction and create a report with images located.
 # ** Returns:       None 
@@ -14,7 +14,8 @@
 #                         - continually update comments  
 #                   v 3.2 - look at coding for building HTML and separate Accessible and Incaccessable
 #                   v 3.3 - Small amendment with Hash Value category heading. Put this back to prior version and changed heading to MD5 as everyone should be using Griffeye in SYP
-#                   v 3.4 - 
+#                   v 3.4 - BUG Amended WriteHTMLtoFile() in clsHTMLWriter to force UTF-8 encoding
+#                   v 3.5 - BUG Amended WriteHTMLtoFile() in clsHTMLWriter as introduced a bug when saving file.
 # ** WishList:		Add functionality to form to request file-data information for report.
 # **				Error logging - try/catch in main()?
 # **                file located and not-located or duplicates will be logged.
@@ -540,6 +541,7 @@ class clsImageDetails():
 #                   08/11/2016 - amended WriteHTMLtoFile() to write HTML TD stored in dictionary as lists in columns as specified.
 #                                 The intention will be to add this variable to the form for user specification, 
 #                                 Will also change functionality to make it possible for separate reports to be created
+#                   31/03/2017 - moved Write() outside of if constraint and forced UTF-8 encoding for text string written
 # ******************************************************************
 class clsHTMLWriter:
 
@@ -592,8 +594,12 @@ class clsHTMLWriter:
 
                 sHTML = '<HTML><H1>' + self.__sHeading + '</H1>'
                 sHTML += self.__sBuildHTMLTableStringForCategory(eachCategory, v_iTableColumns)
-                sHTML += '</HTML>'
 
+                sHTML += '</HTML>'
+                # mtk 31/03/2017 - issues saving HTML text file with illegal characters. 
+                #                   imposing UTF-8 encoidng avoids this...
+                filestream.write(sHTML.encode("utf-8"))
+                filestream.close()
         else:
             
             sReportFileName = v_sFileLocation + '.html'
@@ -607,10 +613,10 @@ class clsHTMLWriter:
 
             sHTML += '</HTML>'
 
-        # mtk 31/03/2017 - issues saving HTML text file with illegal characters. 
-        #                   imposing UTF-8 encoidng avoids this...
-        filestream.write(sHTML.encode("utf-8"))
-        filestream.close()
+            # mtk 31/03/2017 - issues saving HTML text file with illegal characters. 
+            #                   imposing UTF-8 encoidng avoids this...
+            filestream.write(sHTML.encode("utf-8"))
+            filestream.close()
         
 
     # private functions
