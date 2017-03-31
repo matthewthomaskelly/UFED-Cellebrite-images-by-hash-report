@@ -1,6 +1,6 @@
 # *******************************************************************
 # ** Name:          UFED create report from HASH values
-# ** Version:       v3.3
+# ** Version:       v3.4
 # ** Purpose:       A short script to open exported CSV separated export from NetClean of categorised images including MD5 value.
 #					The script will iterate through each image file witin an extraction and create a report with images located.
 # ** Returns:       None 
@@ -14,6 +14,7 @@
 #                         - continually update comments  
 #                   v 3.2 - look at coding for building HTML and separate Accessible and Incaccessable
 #                   v 3.3 - Small amendment with Hash Value category heading. Put this back to prior version and changed heading to MD5 as everyone should be using Griffeye in SYP
+#                   v 3.4 - 
 # ** WishList:		Add functionality to form to request file-data information for report.
 # **				Error logging - try/catch in main()?
 # **                file located and not-located or duplicates will be logged.
@@ -584,17 +585,15 @@ class clsHTMLWriter:
             #separate report for each category
             for eachCategory in self.__dicCategories:
 
+                # 01/12/2016 - issues creating report when Case \ Force specific. Need to parse eachCategory text to cater for special characters.
                 sReportFileName = v_sFileLocation + ' ' + self.__sPurgeFileName( eachCategory + '.html')
 
-                # 01/12/2016 - issues creating report when Case \ Force specific. Need to parse eachCategory text to cater for special characters.
                 filestream = open(sReportFileName, 'w')
 
                 sHTML = '<HTML><H1>' + self.__sHeading + '</H1>'
                 sHTML += self.__sBuildHTMLTableStringForCategory(eachCategory, v_iTableColumns)
                 sHTML += '</HTML>'
 
-                filestream.write(sHTML)
-                filestream.close()
         else:
             
             sReportFileName = v_sFileLocation + '.html'
@@ -608,8 +607,10 @@ class clsHTMLWriter:
 
             sHTML += '</HTML>'
 
-            filestream.write(sHTML)
-            filestream.close()
+        # mtk 31/03/2017 - issues saving HTML text file with illegal characters. 
+        #                   imposing UTF-8 encoidng avoids this...
+        filestream.write(sHTML.encode("utf-8"))
+        filestream.close()
         
 
     # private functions
