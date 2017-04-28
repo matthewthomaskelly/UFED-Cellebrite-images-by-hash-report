@@ -1,6 +1,6 @@
 # *******************************************************************
 # ** Name:          UFED create report from HASH values
-# ** Version:       v3.5
+# ** Version:       v4.1
 # ** Purpose:       A short script to open exported CSV separated export from NetClean of categorised images including MD5 value.
 #					The script will iterate through each image file witin an extraction and create a report with images located.
 # ** Returns:       None 
@@ -16,10 +16,14 @@
 #                   v 3.3 - Small amendment with Hash Value category heading. Put this back to prior version and changed heading to MD5 as everyone should be using Griffeye in SYP
 #                   v 3.4 - BUG Amended WriteHTMLtoFile() in clsHTMLWriter to force UTF-8 encoding
 #                   v 3.5 - BUG Amended WriteHTMLtoFile() in clsHTMLWriter as introduced a bug when saving file.
+#                   v 3.6 - BUG 25/04/2017 - removed explicit conversion to str() as causing errors when Unicode characters in filename
+#                   v 4.0 - Added main try/except and LogFile entries for duplicates and files not found
+#                         - BUG MD5 values were only being matched once and further duplicates not being searched for. 
+#                            took test for duplicate MD5 values out of datafiles loop to ensure all values sought and re-introduced into readline loop
+#                   v 4.1 - CHeck for images not located in lstFiles[] and add to report.
 # ** WishList:		Add functionality to form to request file-data information for report.
-# **				Error logging - try/catch in main()?
-# **                file located and not-located or duplicates will be logged.
 # **                Export clsHTMLWriter to separate module for generic use.
+#                   Add columns to report form to specify number of columns in HTML
 # ******************************************************************
 
                                 # # # Imports # # #
@@ -44,6 +48,7 @@ import sys
 # ** Revisions:     11/2016 - major revision in program logic removing dependency on HTML write for storage of images data.
 #                           - added further loop for Images AND Videos in UFED ds object
 #                           - function uses ffmpeg for thumbnail creation. Added check for ffmpeg existence and alternative calls for Pictures and Videos
+#                   25/04/2017 - BUG removed explicit conversion to str() as causing errors when Unicode characters in filename
 # ******************************************************************
 
 def main():
@@ -73,6 +78,17 @@ def main():
     iCount = 0
     for eachDataType in lstDataFiles:
 
+        # v4.0 MTK - Create Log file and write introductory entry
+        objLogFileStream = CreateLogFile(sExportReportLoc + "\\LogFile " + eachDataType + ".txt")
+        WriteLogFileEntry(objLogFileStream, "Log file for report name: " + sReportName)
+        WriteLogFileEntry(objLogFileStream, "Duplicate MD5 values will not be search for. This issue will be addressed in future releases.")
+        WriteLogFileEntry(objLogFileStream, "MD5 Values not located will be logged.")
+
+        # Add Log Entry
+        WriteLogFileEntry(objLogFileStream, "= = = = = = = = ")
+        WriteLogFileEntry(objLogFileStream, "Starting data files search for: " + eachDataType)
+        WriteLogFileEntry(objLogFileStream, "= = = = = = = = ")
+
         # Open CSV file and locate column linked to MD5 values
         objCSVFile = open( sCSVFileLoc )
         sReadLine = objCSVFile.readline()
@@ -81,7 +97,6 @@ def main():
         asReadLineSplit[iLen-1] = asReadLineSplit[iLen-1].strip()
         iHASHIndex = asReadLineSplit.index('MD5')
         iCategoryIndex = asReadLineSplit.index('Category')
-
 
         # 02/12/2016 Tag added at request AT
         try:
@@ -106,7 +121,7 @@ def main():
             sReadLine = objCSVFile.readline()
             if not sReadLine:
                 break
-
+            
             # Class to store details of each MD5 match located
             objFilesDetails = clsImageDetails()
             asReadLineSplit = sReadLine.split(',')    
@@ -115,12 +130,16 @@ def main():
             asReadLineSplit[iHASHIndex] = asReadLineSplit[iHASHIndex].lower()
             asReadLineSplit[iHASHIndex] = asReadLineSplit[iHASHIndex].strip()
 
+            # check whether or not the MD5 value has already been searched for. If so, read next line by returning control to start of loop (continue)
+            if bCheckIfMD5Exists( lstFiles, asReadLineSplit[iHASHIndex] ):
+                #WriteLogFileEntry(objLogFileStream, "Duplicate MD5 search value in CSV: " + asReadLineSplit[iHASHIndex])
+                continue
+
+            # v4.0 Boolean Value to store whether or not MD5 Value located
+            bFileLocatedByMD5Match = False
+
             # Iterate through each image and locate matching MD5 values
             for eachFileObj in objDataFiles:
-
-                # check whether or not the MD5 value has already been searched for. If so, break loop
-                if bCheckIfMD5Exists( lstFiles, asReadLineSplit[iHASHIndex] ):
-                    break
 
                 sMD5 = eachFileObj.Md5
                 # calculate HASH value if not in Cellebrite UFED
@@ -130,17 +149,21 @@ def main():
                 
                 if sMD5  == asReadLineSplit[iHASHIndex]:
 
+                    # v4.0 MTK set located flag to True
+                    bFileLocatedByMD5Match = True
+
                     # save image to images location
                     iCount += 1
                     try:
                         sSavedFileName = ''
                         sSavedFileName = exportUFEDFile ( eachFileObj, sExportReportLoc + sFilesRelLoc, str(iCount) )
                     except:
-                        print('Error writing file!')
+                        WriteLogFileEntry(objLogFileStream, "Error writing file!: " + eachFileObj.Name)
 
                     objFilesDetails.sCategory = asReadLineSplit[iCategoryIndex]
                     objFilesDetails.sMD5 = asReadLineSplit[iHASHIndex]
-                    objFilesDetails.sFileName = str(eachFileObj.Name)
+                    # mtk 25/04/2017 - removed explicit str() conversion as causing errors when Unicode character in filename
+                    objFilesDetails.sFileName = eachFileObj.Name
                     objFilesDetails.sFolderName = eachFileObj.Folder
                     objFilesDetails.sCreationDate = str(eachFileObj.CreationTime)
                     objFilesDetails.sRelSavedPathFileName = sFilesRelLoc + '\\'  + sSavedFileName
@@ -149,6 +172,8 @@ def main():
                         objFilesDetails.sTagsNotes = asReadLineSplit[iTagIndex]
                     else:
                         objFilesDetails.sTagsNotes = '' 
+                    # v4.1 - boolean value for report of files not located
+                    objFilesDetails.bFileLocatedInUFED = True
                     
                     if eachDataType == 'Video':
                         os.system( sFFMPEGLocation + " -i \"" + sExportReportLoc  + objFilesDetails.sRelSavedPathFileName + "\" -ss 00:00:01.0 -vframes 1 -vf scale=100:-1 \"" + sExportReportLoc + objFilesDetails.sRelSavedPathThumbName + "\"")
@@ -161,9 +186,15 @@ def main():
 
             # end of eachFileObj in DataFiles
               
+            if bFileLocatedByMD5Match == False:
+                objFilesDetails.bFileLocatedInUFED = False
+                lstFiles.append(objFilesDetails)
+                pass
+                WriteLogFileEntry(objLogFileStream, "MD5 value match not found: " + asReadLineSplit[iHASHIndex] )
+
         # Write built HTML stream to file location
         objHTMLWrite = clsHTMLWriter()      
-        objHTMLWrite.WriteHTMLtoFile( lstFiles, sExportReportLoc + '\\' + sReportName + ' ' + eachDataType, bSeparateReports, 4)
+        objHTMLWrite.WriteHTMLtoFile( lstFiles, sExportReportLoc + '\\' + sReportName + ' ' + eachDataType, bSeparateReports, 3)
         
         sAppSpecificFolders = ""
         sAccessibleFolders = ""
@@ -187,11 +218,13 @@ def main():
                 objHTMLWrite.WriteHTMLtoFile( lstFiles, sExportReportLoc + '\\' + sReportName + ' ' + eachDataType, bSeparateReports, 4)
             else:
                 bLoop = False
-
-        # end of read line CSV files
        
         # close CSV file
         objCSVFile.close()
+        # v4.0 Close Log File Stream
+        CloseLogFile( objLogFileStream )
+
+    # end of read line CSV files
 
 # end of main()
 
@@ -283,6 +316,19 @@ def exportUFEDFile( v_objImage, v_sFolderPathToSave, r_sFileNameToSaveLessExt=''
         return r_sFileNameToSaveLessExt
     except:
         return ""
+
+
+def CreateLogFile(v_strLogFileName):
+    filestream = open(v_strLogFileName, 'w')
+    return filestream
+
+
+def WriteLogFileEntry(r_objLogFileStream, v_strLogFileEntry):
+    r_objLogFileStream.write(v_strLogFileEntry + "\n\r")
+
+
+def CloseLogFile(r_objLogFileStream):
+    r_objLogFileStream.close()
 
 
                                 # # # class definitions # # # 
@@ -480,6 +526,7 @@ class clsImageDetails():
         self.__sRelSavedPathFileName = ''
         self.__sRelSavedPathThumbName = ''
         self.__sTagsNotes = ''
+        self.__bFileLocatedInUFED = False
 
     # Set and Get sFileName
     def sFileName(self, v_sData):
@@ -529,6 +576,12 @@ class clsImageDetails():
     def sTagsNotes(self):
         sTagsNotes = self.__sTagsNotes
 
+    # Set and Get bFileLocatedInUFED boolean value
+    def bFileLocatedInUFED(self):
+        bFileLocatedInUFED = self.__bFileLocatedInUFED    
+    def bFileLocatedInUFED(self, v_bData):
+        self.__bFileLocatedInUFED = v_bData
+
 # *******************************************************************
 # ** Name:          clsHTMLWriter
 # ** Purpose:       A class to store HTML data in tables by Category stored in a dictionary for each Category.
@@ -542,6 +595,7 @@ class clsImageDetails():
 #                                 The intention will be to add this variable to the form for user specification, 
 #                                 Will also change functionality to make it possible for separate reports to be created
 #                   31/03/2017 - moved Write() outside of if constraint and forced UTF-8 encoding for text string written
+#                   31/03/2017 - put back inside constraint AND Category Loop!
 # ******************************************************************
 class clsHTMLWriter:
 
@@ -646,6 +700,8 @@ class clsHTMLWriter:
             sHTMLAppSpecific = '<H3> Application Specific </H3> <TABLE><TR>'
             sHTMLNonAccessible = '<H3> Non-Accessible </H3> <TABLE><TR>'
             sHTMLUnknown = '<H3> Unknown </H3> <TABLE><TR>'
+            # v4.1 Report table for MD5 values not located
+            sHTMLMD5NotFoundInUFED = '<H3> MD5 Values not located </H3> <TABLE><TR>'
 
             # dic Categories contains a dic of lists for each image
             for eachSubLst in self.__dicCategories[r_CurrentCategory]:
@@ -711,7 +767,7 @@ class clsHTMLWriter:
         
             sHTML += sHTMLAccessible + '</TR></TABLE>' + sHTMLAppSpecific + '</TR></TABLE>' + sHTMLNonAccessible + '</TR></TABLE>' + sHTMLUnknown + '</TR></TABLE>' 
         else:
-            sHTML = ''
+            sHTML += sHTMLMD5NotFoundInUFED + 
         return sHTML
 
 
@@ -741,5 +797,10 @@ class clsHTMLWriter:
         return sTempString
 
                         # # # Start of script  # # #
+def maincall():
+    try:
+        main()
+    except Exception as e:
+        MessageBox.Show(e)
 
-main()
+maincall()
