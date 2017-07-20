@@ -1,6 +1,6 @@
 # *******************************************************************
 # ** Name:          UFED create report from HASH values
-# ** Version:       v4.1
+# ** Version:       v4.0
 # ** Purpose:       A short script to open exported CSV separated export from NetClean of categorised images including MD5 value.
 #					The script will iterate through each image file witin an extraction and create a report with images located.
 # ** Returns:       None 
@@ -187,10 +187,12 @@ def main():
             # end of eachFileObj in DataFiles
               
             if bFileLocatedByMD5Match == False:
+                WriteLogFileEntry(objLogFileStream, "MD5 value match not found: " + asReadLineSplit[iHASHIndex] )
+                pass
                 objFilesDetails.bFileLocatedInUFED = False
                 lstFiles.append(objFilesDetails)
-                pass
-                WriteLogFileEntry(objLogFileStream, "MD5 value match not found: " + asReadLineSplit[iHASHIndex] )
+                
+                
 
         # Write built HTML stream to file location
         objHTMLWrite = clsHTMLWriter()      
@@ -767,7 +769,7 @@ class clsHTMLWriter:
         
             sHTML += sHTMLAccessible + '</TR></TABLE>' + sHTMLAppSpecific + '</TR></TABLE>' + sHTMLNonAccessible + '</TR></TABLE>' + sHTMLUnknown + '</TR></TABLE>' 
         else:
-            sHTML += sHTMLMD5NotFoundInUFED + 
+            sHTML = ''
         return sHTML
 
 
