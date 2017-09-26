@@ -69,12 +69,12 @@ def main():
     sReportName = frmCSVFolder.sReportFileName
     bSeparateReports = frmCSVFolder.bSeparateReports
     
-    sThumbRelLoc = '\\Thumbs'
+    sThumbRelLoc = 'Thumbs'
     os.mkdir(sExportReportLoc + sThumbRelLoc)
 
 
     # v4.0 MTK - Create Log file and write introductory entry
-    objLogFileStream = CreateLogFile(sExportReportLoc + "\\LogFile " + eachDataType + ".txt")
+    objLogFileStream = CreateLogFile(os.path.join(sExportReportLoc, "LogFile ", eachDataType + ".txt")
     WriteLogFileHeaders(objLogFileStream, sReportName, eachDataType)
 
 
@@ -84,8 +84,6 @@ def main():
     # loop through each specified data files (will probably remain at Images and Videos only!)
     iCount = 0
     for eachDataType in lstDataFiles:
-
-        Wri
 
         # Open CSV file and locate column linked to MD5 values
         objCSVFile = open( sCSVFileLoc )
@@ -99,7 +97,7 @@ def main():
         # assign Images or Video to DataFiles object for MD5 comparison
         objDataFiles = ds.DataFiles[eachDataType]
         # These will be stored in the relevant (relative) directory...
-        sFilesRelLoc =   '\\' + eachDataType
+        sFilesRelLoc =   eachDataType
         # ... and created
         os.mkdir(sExportReportLoc + sFilesRelLoc)
         
@@ -151,14 +149,15 @@ def main():
                     except:
                         WriteLogFileEntry(objLogFileStream, "Error writing file!: " + eachFileObj.Name)
 
+
                     objFilesDetails.sCategory = asReadLineSplit[iCategoryIndex]
                     objFilesDetails.sMD5 = asReadLineSplit[iHASHIndex]
                     # mtk 25/04/2017 - removed explicit str() conversion as causing errors when Unicode character in filename
                     objFilesDetails.sFileName = eachFileObj.Name
                     objFilesDetails.sFolderName = eachFileObj.Folder
                     objFilesDetails.sCreationDate = str(eachFileObj.CreationTime)
-                    objFilesDetails.sRelSavedPathFileName = sFilesRelLoc + '\\'  + sSavedFileName
-                    objFilesDetails.sRelSavedPathThumbName  =  sThumbRelLoc + '\\' + sSavedFileName + '.png'
+                    objFilesDetails.sRelSavedPathFileName = os.path.join(sFilesRelLoc, sSavedFileName)
+                    objFilesDetails.sRelSavedPathThumbName  =  os.path.join(sThumbRelLoc, sSavedFileName + '.png')
                     # v4.1 - boolean value for report of files not located
                     objFilesDetails.bFileLocatedInUFED = True
                     
@@ -179,34 +178,6 @@ def main():
                 objFilesDetails.bFileLocatedInUFED = False
                 lstFiles.append(objFilesDetails)
                 
-                
-
-        # Write built HTML stream to file location
-        objHTMLWrite = clsHTMLWriter()      
-        objHTMLWrite.WriteHTMLtoFile( lstFiles, sExportReportLoc + '\\' + sReportName + ' ' + eachDataType, bSeparateReports, 3)
-        
-        sAppSpecificFolders = ""
-        sAccessibleFolders = ""
-        sNonAccessibleFolders = ""
-        bLoop = True
-        while bLoop:
-
-            r = MessageBox.Show( "Would you like to specifiy folder locations for Accessible, Non-Accessible and Application specific files?", "Recompile reports", MessageBoxButtons.YesNo, MessageBoxIcon.Question )
-            if r == DialogResult.Yes:
-                frmSpecify = JForm()
-                frmSpecify.sAppSpecificFolders = sAppSpecificFolders
-                frmSpecify.sAccessibleFolders = sAccessibleFolders
-                frmSpecify.sNonAccessibleFolders = sNonAccessibleFolders
-                Application.Run( frmSpecify )
-                sAppSpecificFolders = frmSpecify.sAppSpecificFolders
-                sAccessibleFolders = frmSpecify.sAccessibleFolders
-                sNonAccessibleFolders = frmSpecify.sNonAccessibleFolders
-                # form causes UFED to crash. Is this due to garbage disposal as arguably this form is not the main API!?
-                frmSpecify.Dispose()
-                objHTMLWrite.setSearchTermFolders( sAppSpecificFolders.split(','), sAccessibleFolders.split(','), sNonAccessibleFolders.split(',') )
-                objHTMLWrite.WriteHTMLtoFile( lstFiles, sExportReportLoc + '\\' + sReportName + ' ' + eachDataType, bSeparateReports, 4)
-            else:
-                bLoop = False
        
         # close CSV file
         objCSVFile.close()
@@ -505,240 +476,6 @@ class JForm(Form):
                 self.sAccessibleFolders = self.txtAccessibleFolders.Text
                 self.sNonAccessibleFolders = self.txtNonAccessibleFolders.Text
                 self.Close()
-
-
-# *******************************************************************
-# ** Name:          clsImageDetails
-# ** Purpose:       A class to store data regarding Image and Video recognised as a match through MD5 comparison.
-# ** Author:        Matthew KELLY
-# ** Date:          22/11/2016
-# ** Revisions:     
-# ******************************************************************
-class clsImageDetails():
-    
-    def __init__(self):
-        self.sFileName = ''
-        self.sFolderName = ''
-        self.sCreationDate = ''
-        self.sMD5 = ''
-        self.sCategory = ''
-        self.sRelSavedPathFileName = ''
-        self.sRelSavedPathThumbName = ''
-        self.sTagsNotes = ''
-        self.bFileLocatedInUFED = False
-
-
-
-# *******************************************************************
-# ** Name:          clsHTMLWriter
-# ** Purpose:       A class to store HTML data in tables by Category stored in a dictionary for each Category.
-#                   Includes a function to write HTML page at conclusion to specified location for report.
-# ** Author:        Matthew KELLY
-# ** Date:          11/05/2015
-# ** Revisions:     19/07/2016 - amended functions AddTableContentByKeyAsLists() and AddImageLocationReference() to include private
-#                    function call __AddToDicCategories() that checks whether dictionary key exists before adding to Category dictionary
-#                   07-08/11/2016 - amended AddTableContentByKeyAsLists() to only create TD data HTML and add to dictionary as list
-#                   08/11/2016 - amended WriteHTMLtoFile() to write HTML TD stored in dictionary as lists in columns as specified.
-#                                 The intention will be to add this variable to the form for user specification, 
-#                                 Will also change functionality to make it possible for separate reports to be created
-#                   31/03/2017 - moved Write() outside of if constraint and forced UTF-8 encoding for text string written
-#                   31/03/2017 - put back inside constraint AND Category Loop!
-# ******************************************************************
-class clsHTMLWriter:
-
-    sHeading = 'South Yorkshire Police Case Report'
-
-    def __init__(self):
-        self.__sHeading = 'South Yorkshire Police Case Report'
-        self.__dicCategories = {}
-        self.__lstAccessibleSearchTerms = []
-        self.__lstNonAccessibleSearchTerms = []
-        self.__lstAppSpecificSearchTerms = []
-
-    def setSearchTermFolders(self, lstAppSpecific, lstAccessibleSpecific, lstNonAccessible):
-        self.__lstAppSpecificSearchTerms = lstAppSpecific
-        self.__lstAccessibleSearchTerms = lstAccessibleSpecific
-        self.__lstNonAccessibleSearchTerms = lstNonAccessible
-
-
-    def __BuildDicCategories(self, v_lstFiles):
-
-        self.__dicCategories = {}
-
-        for eachFileObj in v_lstFiles:
-            sCategory = eachFileObj.sCategory
-            sARefString = self.__GetImageHTMLReference( eachFileObj.sRelSavedPathThumbName, eachFileObj.sRelSavedPathFileName )
-            lstTableContent = [ 'File name: ' + eachFileObj.sFileName, 'In Folder: ' + eachFileObj.sFolderName, 'Creation Date: ' + eachFileObj.sCreationDate, 'MD5: ' + eachFileObj.sMD5 ]
-            # added at request of AT 02/12/2016
-            if eachFileObj.sTagsNotes != '':
-                lstTableContent.append ( 'Tag notes: ' + eachFileObj.sTagsNotes )
-            lstTemp = self.__sBuildHTMLTableLst( sARefString, lstTableContent )
-            self.__AddToDicCategories( sCategory, lstTemp )
-
-
-    def WriteHTMLtoFile(self, r_lstFilesObj, v_sFileLocation, v_bSeparateReports, v_iTableColumns=3):
-        
-        self.__BuildDicCategories(r_lstFilesObj)
-
-
-        if v_bSeparateReports == True:
-            #separate report for each category
-            for eachCategory in self.__dicCategories:
-
-                # 01/12/2016 - issues creating report when Case \ Force specific. Need to parse eachCategory text to cater for special characters.
-                sReportFileName = v_sFileLocation + ' ' + self.__sPurgeFileName( eachCategory + '.html')
-
-                filestream = open(sReportFileName, 'w')
-
-                sHTML = '<HTML><H1>' + sHeading + '</H1>'
-                sHTML += self.__sBuildHTMLTableStringForCategory(eachCategory, v_iTableColumns)
-
-                sHTML += '</HTML>'
-                # mtk 31/03/2017 - issues saving HTML text file with illegal characters. 
-                #                   imposing UTF-8 encoidng avoids this...
-                filestream.write(sHTML.encode("utf-8"))
-                filestream.close()
-        else:
-            
-            sReportFileName = v_sFileLocation + '.html'
-            
-            # one report for each category
-            filestream = open(sReportFileName, 'w')  
-
-            sHTML = '<HTML><H1>' + sHeading + '</H1>'
-            for eachCategory in self.__dicCategories:
-                sHTML += self.__sBuildHTMLTableStringForCategory(eachCategory, v_iTableColumns)
-
-            sHTML += '</HTML>'
-
-            # mtk 31/03/2017 - issues saving HTML text file with illegal characters. 
-            #                   imposing UTF-8 encoidng avoids this...
-            filestream.write(sHTML.encode("utf-8"))
-            filestream.close()
-        
-
-    # private functions
-    def __sBuildHTMLTableLst( self, v_sARefString, v_lstTableContent):
-        lstTemp = []
-        sHTMLBuiltString = '<TD><BR>' + v_sARefString + '<BR>'
-        for sTableContent in v_lstTableContent:
-            sHTMLBuiltString += sTableContent + '<BR>'
-        sHTMLBuiltString += '</TD>'  
-        lstTemp = [sHTMLBuiltString]
-        return (lstTemp)
-
-
-    def __sBuildHTMLTableStringForCategory( self, r_CurrentCategory, v_iTableColumns):
-
-        if self.__dicCategories[r_CurrentCategory] != '':
-            # main HTML string for inclusion in report
-            sHTML = '<H2>' + r_CurrentCategory + '</H2>'
-            
-            # Counters for number of inaccessible or accessible files
-            iCountAccessible = 0
-            iCountAppSpecific = 0
-            iCountNonAccessible = 0
-            iCountUnknown = 0
-            # temporary HTML fields for accessible or Inaccessible HTML strings to be added to sHTML at end of loop
-            sHTMLAccessible = '<H3> Known Accessible </H3> <TABLE><TR>'
-            sHTMLAppSpecific = '<H3> Application Specific </H3> <TABLE><TR>'
-            sHTMLNonAccessible = '<H3> Non-Accessible </H3> <TABLE><TR>'
-            sHTMLUnknown = '<H3> Unknown </H3> <TABLE><TR>'
-            # v4.1 Report table for MD5 values not located
-            sHTMLMD5NotFoundInUFED = '<H3> MD5 Values not located </H3> <TABLE><TR>'
-
-            # dic Categories contains a dic of lists for each image
-            for eachSubLst in self.__dicCategories[r_CurrentCategory]:
-                for eachListValue in eachSubLst:
-                    
-                    bAccessible = False
-                    bApplicationSpecific = False
-                    bNonAccessible = False
-                    
-                    for eachSearchTerm in self.__lstAppSpecificSearchTerms:
-                            # check for all search terms specified in accessible fields
-                            if eachListValue.find( eachSearchTerm.strip() ) > 0:
-                                print ('true')
-                                bApplicationSpecific = True
-                                break
-
-                    if bApplicationSpecific == False:
-                        for eachSearchTerm in self.__lstNonAccessibleSearchTerms:
-                            # check for all search terms specified in accessible fields
-                            if eachListValue.find( eachSearchTerm.strip() ) > 0:
-                                bNonAccessible = True
-                                break
-
-                    if bApplicationSpecific == False and bNonAccessible == False:
-                        for eachSearchTerm in self.__lstAccessibleSearchTerms:
-                            # check for all search terms specified in accessible fields
-                            if eachListValue.find( eachSearchTerm.strip() ) > 0:
-                                bAccessible = True
-                                break
-
-                    if bApplicationSpecific:
-                        iCountAppSpecific += 1
-                        # coding to append count of images per category into HTML. Assumes that first lst value will be image </A>
-                        iIndex = eachListValue.find('</A>')
-                        eachListValue = eachListValue[:iIndex+4] + '<BR>' + str(iCountAppSpecific) + eachListValue[iIndex+4:]                                    
-                        sHTMLAppSpecific += eachListValue
-                        if iCountAppSpecific % v_iTableColumns == 0:
-                            sHTMLAppSpecific += '</TR><TR>'
-                    elif bAccessible:
-                        iCountAccessible += 1
-                        # coding to append count of images per category into HTML. Assumes that first lst value will be image </A>
-                        iIndex = eachListValue.find('</A>')
-                        eachListValue = eachListValue[:iIndex+4] + '<BR>' + str(iCountAccessible) + eachListValue[iIndex+4:]                                    
-                        sHTMLAccessible += eachListValue
-                        if iCountAccessible % v_iTableColumns == 0:
-                            sHTMLAccessible += '</TR><TR>'
-                    elif bNonAccessible:
-                        iCountNonAccessible += 1
-                        # coding to append count of images per category into HTML. Assumes that first lst value will be image </A>
-                        iIndex = eachListValue.find('</A>')
-                        eachListValue = eachListValue[:iIndex+4] + '<BR>' + str(iCountNonAccessible) + eachListValue[iIndex+4:]                                    
-                        sHTMLNonAccessible += eachListValue
-                        if iCountNonAccessible % v_iTableColumns == 0:
-                            sHTMLNonAccessible += '</TR><TR>'
-                    else:
-                        iCountUnknown += 1
-                        # coding to append count of images per category into HTML. Assumes that first lst value will be image </A>
-                        iIndex = eachListValue.find('</A>')
-                        eachListValue = eachListValue[:iIndex+4] + '<BR>' + str(iCountUnknown) + eachListValue[iIndex+4:]                                    
-                        sHTMLUnknown += eachListValue
-                        if iCountUnknown % v_iTableColumns == 0:
-                            sHTMLUnknown += '</TR><TR>'
-        
-            sHTML += sHTMLAccessible + '</TR></TABLE>' + sHTMLAppSpecific + '</TR></TABLE>' + sHTMLNonAccessible + '</TR></TABLE>' + sHTMLUnknown + '</TR></TABLE>' 
-        else:
-            sHTML = ''
-        return sHTML
-
-
-    def __AddToDicCategories(self, v_sKey, v_sHTMLBuiltString):
-        lstTemp = [v_sHTMLBuiltString]
-        if v_sKey in self.__dicCategories:
-            self.__dicCategories[v_sKey] += lstTemp
-        else:  
-            self.__dicCategories[v_sKey] = lstTemp
-
-
-    def __GetImageHTMLReference(self, v_sThumbRelativeLocation, v_sImageRelativeLocation):
-        sHTMLBuiltString = ''
-        if v_sImageRelativeLocation != '':
-            sHTMLBuiltString += '<A href=.' + v_sImageRelativeLocation + '>'
-        else:
-            sHTMLBuiltString += '<A href=.' + v_sThumbRelativeLocation + '>', 
-        sHTMLBuiltString += '<IMG src=.' + v_sThumbRelativeLocation + '>'
-        sHTMLBuiltString += '</A>'
-        return ( sHTMLBuiltString )
-
-
-    def __sPurgeFileName(self, v_sFileName):
-        sTempString = v_sFileName
-        sTempString = sTempString.replace("\\", "")
-        sTempString = sTempString.replace("/", "")
-        return sTempString
 
                         # # # Start of script  # # #
 
