@@ -1,6 +1,7 @@
 # *******************************************************************
 # ** Name:          UFED create report from HASH values
-# ** Version:       v4.0
+# ** Version:       v4.1
+# **                IN DEVELOPMENT
 # ** Purpose:       A short script to open exported CSV separated export from NetClean of categorised images including MD5 value.
 #					The script will iterate through each image file witin an extraction and create a report with images located.
 # ** Returns:       None 
@@ -71,6 +72,12 @@ def main():
     sThumbRelLoc = '\\Thumbs'
     os.mkdir(sExportReportLoc + sThumbRelLoc)
 
+
+    # v4.0 MTK - Create Log file and write introductory entry
+    objLogFileStream = CreateLogFile(sExportReportLoc + "\\LogFile " + eachDataType + ".txt")
+    WriteLogFileHeaders(objLogFileStream, sReportName, eachDataType)
+
+
     # specified Cellebrite data files
     lstDataFiles = ['Image', 'Video']
 
@@ -78,16 +85,7 @@ def main():
     iCount = 0
     for eachDataType in lstDataFiles:
 
-        # v4.0 MTK - Create Log file and write introductory entry
-        objLogFileStream = CreateLogFile(sExportReportLoc + "\\LogFile " + eachDataType + ".txt")
-        WriteLogFileEntry(objLogFileStream, "Log file for report name: " + sReportName)
-        WriteLogFileEntry(objLogFileStream, "Duplicate MD5 values will not be search for. This issue will be addressed in future releases.")
-        WriteLogFileEntry(objLogFileStream, "MD5 Values not located will be logged.")
-
-        # Add Log Entry
-        WriteLogFileEntry(objLogFileStream, "= = = = = = = = ")
-        WriteLogFileEntry(objLogFileStream, "Starting data files search for: " + eachDataType)
-        WriteLogFileEntry(objLogFileStream, "= = = = = = = = ")
+        Wri
 
         # Open CSV file and locate column linked to MD5 values
         objCSVFile = open( sCSVFileLoc )
@@ -97,12 +95,6 @@ def main():
         asReadLineSplit[iLen-1] = asReadLineSplit[iLen-1].strip()
         iHASHIndex = asReadLineSplit.index('MD5')
         iCategoryIndex = asReadLineSplit.index('Category')
-
-        # 02/12/2016 Tag added at request AT
-        try:
-            iTagIndex = asReadLineSplit.index('Tags')
-        except:
-            iTagIndex = -1
 
         # assign Images or Video to DataFiles object for MD5 comparison
         objDataFiles = ds.DataFiles[eachDataType]
@@ -146,7 +138,6 @@ def main():
                 if sMD5 == '':
                     sMD5 = getMd5HashValue(eachFileObj)
 
-                
                 if sMD5  == asReadLineSplit[iHASHIndex]:
 
                     # v4.0 MTK set located flag to True
@@ -168,10 +159,6 @@ def main():
                     objFilesDetails.sCreationDate = str(eachFileObj.CreationTime)
                     objFilesDetails.sRelSavedPathFileName = sFilesRelLoc + '\\'  + sSavedFileName
                     objFilesDetails.sRelSavedPathThumbName  =  sThumbRelLoc + '\\' + sSavedFileName + '.png'
-                    if iTagIndex > 0:
-                        objFilesDetails.sTagsNotes = asReadLineSplit[iTagIndex]
-                    else:
-                        objFilesDetails.sTagsNotes = '' 
                     # v4.1 - boolean value for report of files not located
                     objFilesDetails.bFileLocatedInUFED = True
                     
@@ -324,10 +311,20 @@ def CreateLogFile(v_strLogFileName):
     filestream = open(v_strLogFileName, 'w')
     return filestream
 
-
 def WriteLogFileEntry(r_objLogFileStream, v_strLogFileEntry):
     r_objLogFileStream.write(v_strLogFileEntry + "\n\r")
 
+def WriteLogFileHeaders(r_objLogFileStream, v_sReportName):
+    # Write 
+    WriteLogFileEntry(r_objLogFileStream, "Log file for report name: " + v_sReportName)
+    WriteLogFileEntry(r_objLogFileStream, "Duplicate MD5 values will not be search for. This issue will be addressed in future releases.")
+    WriteLogFileEntry(r_objLogFileStream, "MD5 Values not located will be logged.")
+
+def WriteLogTitleEntry(r_objLogFileStream, v_sDataType):
+    # Add Log Entry
+    WriteLogFileEntry(objLogFileStream, "= = = = = = = = ")
+    WriteLogFileEntry(objLogFileStream, "Starting data files search for: " + v_sDataType)
+    WriteLogFileEntry(objLogFileStream, "= = = = = = = = ")
 
 def CloseLogFile(r_objLogFileStream):
     r_objLogFileStream.close()
@@ -520,69 +517,17 @@ class JForm(Form):
 class clsImageDetails():
     
     def __init__(self):
-        self.__sFileName = ''
-        self.__sFolderName = ''
-        self.__sCreationDate = ''
-        self.__sMD5 = ''
-        self.__sCategory = ''
-        self.__sRelSavedPathFileName = ''
-        self.__sRelSavedPathThumbName = ''
-        self.__sTagsNotes = ''
-        self.__bFileLocatedInUFED = False
+        self.sFileName = ''
+        self.sFolderName = ''
+        self.sCreationDate = ''
+        self.sMD5 = ''
+        self.sCategory = ''
+        self.sRelSavedPathFileName = ''
+        self.sRelSavedPathThumbName = ''
+        self.sTagsNotes = ''
+        self.bFileLocatedInUFED = False
 
-    # Set and Get sFileName
-    def sFileName(self, v_sData):
-        self.__sFileName = v_sData
-    def sFileName(self):
-        sFileName = self.__sFileName
 
-    # Set and Get sFolderName
-    def sFolderName(self, v_sData):
-        self.__sFolderName= v_sData
-    def sFolderName(self):
-        sFolderName = self.__sFolderName
-
-    # Set and Get sCreationDate
-    def sCreationDate(self, v_sData):
-        self.__sCreationDate = v_sData
-    def sCreationDate(self):
-        sCreationDate = self.__sCreationDate
-
-    # Set and Get sMD5
-    def sMD5(self, v_sData):
-        self.__sMD5 = v_sData
-    def sMD5(self):
-        sMD5 = self.__sMD5
-
-    # Set and Get sCategory
-    def sCategory(self, v_sData):
-        self.__sCategory = v_sData
-    def sCategory(self):
-        sCategory = self.__sCategory
-
-    # Set and Get sRelSavedPathFileName
-    def sRelSavedPathFileName(self, v_sData):
-        self.__sRelSavedPathFileName = v_sData
-    def sRelSavedPathFileName(self):
-        sRelSavedPathFileName = self.__sRelSavedPathFileName
-
-    # Set and Get sRelSavedPathThumbName
-    def sRelSavedPathThumbName(self, v_sData):
-        self.__sRelSavedPathThumbName = v_sData
-    def sRelSavedPathThumbName(self):
-        sRelSavedPathThumbName = self.__sRelSavedPathThumbName
-
-    # Set and Get sTags text
-    def sTagsNotes(self, v_sData):
-        self.__sTagsNotes = v_sData
-    def sTagsNotes(self):
-        sTagsNotes = self.__sTagsNotes
-
-    # Set and Get bFileLocatedInUFED boolean value
-    def bFileLocatedInUFED(self):
-        bFileLocatedInUFED = self.__bFileLocatedInUFED    
-    def bFileLocatedInUFED(self, v_bData):
-        self.__bFileLocatedInUFED = v_bData
 
 # *******************************************************************
 # ** Name:          clsHTMLWriter
@@ -601,17 +546,14 @@ class clsImageDetails():
 # ******************************************************************
 class clsHTMLWriter:
 
+    sHeading = 'South Yorkshire Police Case Report'
+
     def __init__(self):
         self.__sHeading = 'South Yorkshire Police Case Report'
         self.__dicCategories = {}
         self.__lstAccessibleSearchTerms = []
         self.__lstNonAccessibleSearchTerms = []
         self.__lstAppSpecificSearchTerms = []
-
-
-    def AddHeadingTitle(self, v_sHeading):
-        self.__sHeading = v_sHeading
-
 
     def setSearchTermFolders(self, lstAppSpecific, lstAccessibleSpecific, lstNonAccessible):
         self.__lstAppSpecificSearchTerms = lstAppSpecific
@@ -648,7 +590,7 @@ class clsHTMLWriter:
 
                 filestream = open(sReportFileName, 'w')
 
-                sHTML = '<HTML><H1>' + self.__sHeading + '</H1>'
+                sHTML = '<HTML><H1>' + sHeading + '</H1>'
                 sHTML += self.__sBuildHTMLTableStringForCategory(eachCategory, v_iTableColumns)
 
                 sHTML += '</HTML>'
@@ -663,7 +605,7 @@ class clsHTMLWriter:
             # one report for each category
             filestream = open(sReportFileName, 'w')  
 
-            sHTML = '<HTML><H1>' + self.__sHeading + '</H1>'
+            sHTML = '<HTML><H1>' + sHeading + '</H1>'
             for eachCategory in self.__dicCategories:
                 sHTML += self.__sBuildHTMLTableStringForCategory(eachCategory, v_iTableColumns)
 
@@ -799,6 +741,7 @@ class clsHTMLWriter:
         return sTempString
 
                         # # # Start of script  # # #
+
 def maincall():
     try:
         main()
