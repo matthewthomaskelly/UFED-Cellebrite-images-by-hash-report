@@ -1,6 +1,6 @@
 # *******************************************************************
 # ** Name:          UFED create report from HASH values
-# ** Version:       v4.1
+# ** Version:       v5.0
 # **                IN DEVELOPMENT
 # ** Purpose:       A short script to open exported CSV separated export from NetClean of categorised images including MD5 value.
 #					The script will iterate through each image file witin an extraction and create a report with images located.
@@ -30,6 +30,7 @@
                                 # # # Imports # # #
 import os
 import hashlib
+import json
 import clr
 clr.AddReference("System.Windows.Forms")
 from System.Windows.Forms import *
@@ -54,12 +55,42 @@ import sys
 
 def main():
 
+    # *******************************************************************
+    # ** Name:          bCheckFFMPEGExists
+    # ** Purpose:       to check is ffmpeg.exe exists in specified location
+    # ** Author:        Matthew KELLY
+    # ** Date:          30/11/2016
+    # ** Revisions:     none
+    # ****************************************************************** 
+    def CheckFFMPEGExists(v_sLocationToCheck):
+        
+        if  os.path.isfile( v_sLocationToCheck ) != True:
+            MessageBox.Show ("Program cannot find the executable ffmpeg.exe in the root of C: and will terminate prematurely. Sorry!", "ffmpeg.exe dependency!", MessageBoxButtons.OK, MessageBoxIcon.Stop)
+            sys.exit()
+
+    # *******************************************************************
+    # ** Name:          getMd5HashValue
+    # ** Purpose:       as above
+    # ** Author:        Matthew KELLY
+    # ** Date:          August 2016
+    # ** Revisions:     none
+    # ****************************************************************** 
+    def getMd5HashValue (r_objImageFile):
+
+        hash = hashlib.md5()
+        try:
+            rd = r_objImageFile.read()
+            hash.update(rd)
+            hexMD5 = hash.hexdigest()
+            return hexMD5.upper
+        except:
+            return ''
+
+
     # this variable will be passed to DOS shell. Beware literals! i.e spaces in file/folder names
     sFFMPEGLocation = 'C:\\FFMPEG.EXE'
-    bCheck = bCheckFFMPEGExists( sFFMPEGLocation )
-    if bCheck != True:
-        MessageBox.Show ("Program cannot find the executable ffmpeg.exe in the root of C: and will terminate prematurely. Sorry!", "ffmpeg.exe dependency!", MessageBoxButtons.OK, MessageBoxIcon.Stop)
-        sys.exit()
+    CheckFFMPEGExists( sFFMPEGLocation )
+    
 
     # Get location of CSV file, path for report and report file name
     frmCSVFolder = IForm()
@@ -67,16 +98,9 @@ def main():
     sCSVFileLoc = frmCSVFolder.sCSVFilePathname
     sExportReportLoc = frmCSVFolder.sReportFolderName
     sReportName = frmCSVFolder.sReportFileName
-    bSeparateReports = frmCSVFolder.bSeparateReports
     
     sThumbRelLoc = 'Thumbs'
     os.mkdir(sExportReportLoc + sThumbRelLoc)
-
-
-    # v4.0 MTK - Create Log file and write introductory entry
-    objLogFileStream = CreateLogFile(os.path.join(sExportReportLoc, "LogFile ", eachDataType + ".txt")
-    WriteLogFileHeaders(objLogFileStream, sReportName, eachDataType)
-
 
     # specified Cellebrite data files
     lstDataFiles = ['Image', 'Video']
@@ -84,6 +108,10 @@ def main():
     # loop through each specified data files (will probably remain at Images and Videos only!)
     iCount = 0
     for eachDataType in lstDataFiles:
+
+        # v4.0 MTK - Create Log file and write introductory entry
+        objLogFileStream = CreateLogFile(os.path.join(sExportReportLoc, "LogFile ", eachDataType + ".txt")
+        WriteLogFileHeaders(objLogFileStream, sReportName, eachDataType)
 
         # Open CSV file and locate column linked to MD5 values
         objCSVFile = open( sCSVFileLoc )
@@ -100,9 +128,6 @@ def main():
         sFilesRelLoc =   eachDataType
         # ... and created
         os.mkdir(sExportReportLoc + sFilesRelLoc)
-        
-        # store the matching DataFiles in a lst of Objects
-        lstFiles = []
 
         # read the CSV file sequentially line by line until no more data
         while True:
@@ -112,8 +137,8 @@ def main():
             if not sReadLine:
                 break
             
-            # Class to store details of each MD5 match located
-            objFilesDetails = clsImageDetails()
+            # dictionaru to store details of each MD5 match located
+            dict_file_matches[0] = {}
             asReadLineSplit = sReadLine.split(',')    
 
             # convert HASH value to lowercase for match in UFED reader
@@ -121,7 +146,7 @@ def main():
             asReadLineSplit[iHASHIndex] = asReadLineSplit[iHASHIndex].strip()
 
             # check whether or not the MD5 value has already been searched for. If so, read next line by returning control to start of loop (continue)
-            if bCheckIfMD5Exists( lstFiles, asReadLineSplit[iHASHIndex] ):
+            if bCheckIfMD5Exists( dict_file_matches, asReadLineSplit[iHASHIndex] ):
                 #WriteLogFileEntry(objLogFileStream, "Duplicate MD5 search value in CSV: " + asReadLineSplit[iHASHIndex])
                 continue
 
@@ -150,16 +175,16 @@ def main():
                         WriteLogFileEntry(objLogFileStream, "Error writing file!: " + eachFileObj.Name)
 
 
-                    objFilesDetails.sCategory = asReadLineSplit[iCategoryIndex]
-                    objFilesDetails.sMD5 = asReadLineSplit[iHASHIndex]
-                    # mtk 25/04/2017 - removed explicit str() conversion as causing errors when Unicode character in filename
-                    objFilesDetails.sFileName = eachFileObj.Name
-                    objFilesDetails.sFolderName = eachFileObj.Folder
-                    objFilesDetails.sCreationDate = str(eachFileObj.CreationTime)
-                    objFilesDetails.sRelSavedPathFileName = os.path.join(sFilesRelLoc, sSavedFileName)
-                    objFilesDetails.sRelSavedPathThumbName  =  os.path.join(sThumbRelLoc, sSavedFileName + '.png')
-                    # v4.1 - boolean value for report of files not located
-                    objFilesDetails.bFileLocatedInUFED = True
+                    dict_file_matches = { asReadLineSplit[iCategoryIndex]:
+                                            { 'md5': asReadLineSplit[iHASHIndex]:
+                                                { 'FileName': eachFileObj.Name,
+                                                  'FolderName': eachFileObj.Folder,
+                                                  'CreationDate': str(eachFileObj.CreationTime),
+                                                  'RelSavedPathFileName': os.path.join(sFilesRelLoc, sSavedFileName)
+                                                  'RelSavedPathThumbName': os.path.join(sThumbRelLoc, sSavedFileName + '.png')
+                                                }
+                                            }
+                                        }
                     
                     if eachDataType == 'Video':
                         os.system( sFFMPEGLocation + " -i \"" + sExportReportLoc  + objFilesDetails.sRelSavedPathFileName + "\" -ss 00:00:01.0 -vframes 1 -vf scale=100:-1 \"" + sExportReportLoc + objFilesDetails.sRelSavedPathThumbName + "\"")
@@ -175,9 +200,6 @@ def main():
             if bFileLocatedByMD5Match == False:
                 WriteLogFileEntry(objLogFileStream, "MD5 value match not found: " + asReadLineSplit[iHASHIndex] )
                 pass
-                objFilesDetails.bFileLocatedInUFED = False
-                lstFiles.append(objFilesDetails)
-                
        
         # close CSV file
         objCSVFile.close()
@@ -187,47 +209,6 @@ def main():
     # end of read line CSV files
 
 # end of main()
-
-
-# *******************************************************************
-# ** Name:          bCheckFFMPEGExists
-# ** Purpose:       to check is ffmpeg.exe exists in specified location
-# ** Author:        Matthew KELLY
-# ** Date:          30/11/2016
-# ** Revisions:     none
-# ****************************************************************** 
-def bCheckFFMPEGExists(v_sLocationToCheck):
-
-    if os.path.isfile( v_sLocationToCheck ):
-        return True
-    else:
-        return False
-
-def bCheckIfMD5Exists(v_lstFileDetails, v_sMD5ToCheck):
-    bReturnValue = False
-    for eachFile in v_lstFileDetails:
-        if eachFile.sMD5 == v_sMD5ToCheck:
-            bReturnValue = True
-            break
-    return bReturnValue
-
-# *******************************************************************
-# ** Name:          getMd5HashValue
-# ** Purpose:       as above
-# ** Author:        Matthew KELLY
-# ** Date:          August 2016
-# ** Revisions:     none
-# ****************************************************************** 
-def getMd5HashValue (r_objImageFile):
-
-    hash = hashlib.md5()
-    try:
-        rd = r_objImageFile.read()
-        hash.update(rd)
-        hexMD5 = hash.hexdigest()
-        return hexMD5.upper
-    except:
-        return ''
 
 # *******************************************************************
 # ** Name:          exportUFEDFile
@@ -342,31 +323,21 @@ class IForm(Form):
                 self.txtReportFileName.Location = Point(10,60)
                 self.txtReportFileName.Width = 300
 
-                # add a tick box to indicate whether to separate reports
-                self.chkSeparateReports = CheckBox()
-                self.chkSeparateReports.Text = "Separate Reports by Category"
-                self.chkSeparateReports.Location = Point(300, 85)
-                self.chkSeparateReports.Width = 200
-                self.chkSeparateReports.Checked = False
-
                 self.Controls.Add(self.txtCSVFileName)
                 self.Controls.Add(self.txtAppSpecificFolders)
                 self.Controls.Add(self.txtReportFileName)
                 self.Controls.Add(self.btnOk)
-                self.Controls.Add(self.chkSeparateReports)
                 self.CenterToScreen()
 
                 self.sCSVFilePathname = ""   
                 self.sReportFolderName = ""
                 self.sReportFileName = ""
-                self.bSeparateReports = False
 
         def OKPressed(self, sender, args):
 
                 sCSVFile = self.txtCSVFileName.Text
                 sReportFolder = self.txtAppSpecificFolders.Text
                 sReportFile = self.txtReportFileName.Text
-                bSeparateReports = self.chkSeparateReports.Checked
 
                 if ( os.path.isfile( sCSVFile ) == False ):
                         MessageBox.Show( "The specified CSV file does not exist, please choose another." , "Invalid Directory" )
@@ -377,105 +348,12 @@ class IForm(Form):
                                 self.sCSVFilePathname = sCSVFile
                                 self.sReportFolderName = sReportFolder
                                 self.sReportFileName = sReportFile
-                                self.bSeparateReports = bSeparateReports
                                 self.Close()
                         else:
                             pass  
                 else:
                     MessageBox.Show( "The specified report folder already exists, please choose another." , "Invalid Directory" )
                     pass
-
-# *******************************************************************
-# ** Name:          JForm
-# ** Purpose:       Displays a form to specify known folder locations for Accessible, Application related, 
-#                    and Non-accessible files
-# ** Author:        Matthew KELLY
-# ** Date:          07/12/2016
-# ** Revisions:     Amended JForm as interface
-# ****************************************************************** 
-class JForm(Form):
-
-        def __init__(self):
-                self.Text = "Folder Locations. "
-                self.Height = 210
-                self.Width = 650
-
-                #add button
-                self.btnOk = Button()
-                self.btnOk.Text = "&OK"
-                self.btnOk.Location = Point(10, 140)
-                self.btnOk.Click += self.OKPressed
-
-                # overarching label
-                self.lblInstructions = Label()
-                self.lblInstructions.Text = "Please specify folder locations from known Accessible, Application specific and Non-Accessible files. Remainder will be classified as Unknown. \
- Please separate the individual folder locations with a single comma. \
- Partial folder name contents will suffice."
-                self.lblInstructions.Width = 600
-                self.lblInstructions.Height = 40
-                self.lblInstructions.Location = Point(10,10)
-                
-                # label for Accessible folders
-                self.lblAccessibleFolders = Label()
-                self.lblAccessibleFolders.Text = "Accessible folders: "
-                self.lblAccessibleFolders.Width = 150
-                self.lblAccessibleFolders.Location = Point(10,60)
-
-                #add textbox for Accessible folders
-                self.txtAccessibleFolders = TextBox()
-                self.txtAccessibleFolders.Text = ""
-                self.txtAccessibleFolders.Location = Point(160,60)
-                self.txtAccessibleFolders.Width = 450
-
-                # label for Application specific folders
-                self.lblAppSpecificFolders = Label()
-                self.lblAppSpecificFolders.Text = "Application specific folders: "
-                self.lblAppSpecificFolders.Width = 150
-                self.lblAppSpecificFolders.Location = Point(10,85)
-
-                #add textbox for Application specific folders
-                self.txtAppSpecificFolders = TextBox()
-                self.txtAppSpecificFolders.Text = ""
-                self.txtAppSpecificFolders.Location = Point(160,85)
-                self.txtAppSpecificFolders.Width = 450
-
-                # label for Non-Accessible folders
-                self.lblNonAccessibleFolders = Label()
-                self.lblNonAccessibleFolders.Text = "Non-Accessible folders: "
-                self.lblNonAccessibleFolders.Width = 150
-                self.lblNonAccessibleFolders.Location = Point(10,110)
-
-                #add textbox for Non-Accessible folders
-                self.txtNonAccessibleFolders = TextBox()
-                self.txtNonAccessibleFolders.Text = ""
-                self.txtNonAccessibleFolders.Location = Point(160,110)
-                self.txtNonAccessibleFolders.Width = 450
-
-                self.Controls.Add(self.lblInstructions)
-                self.Controls.Add(self.lblAccessibleFolders)
-                self.Controls.Add(self.txtAccessibleFolders)
-                self.Controls.Add(self.lblAppSpecificFolders)
-                self.Controls.Add(self.txtAppSpecificFolders)
-                self.Controls.Add(self.lblNonAccessibleFolders)
-                self.Controls.Add(self.txtNonAccessibleFolders)
-                self.Controls.Add(self.btnOk)
-                self.CenterToScreen()
-
-                self.sAccessibleFolders = ""
-                self.sAppSpecificFolders = ""  
-                self.sNonAccessibleFolders = ""
-   
-        def OnLoad(self, sender):
-                self.txtAccessibleFolders.Text = self.sAccessibleFolders
-                self.txtAppSpecificFolders.Text = self.sAppSpecificFolders
-                self.txtNonAccessibleFolders.Text = self.sNonAccessibleFolders
-
-        def OKPressed(self, sender, args):
-
-                self.sAppSpecificFolders = self.txtAppSpecificFolders.Text
-                self.sAccessibleFolders = self.txtAccessibleFolders.Text
-                self.sNonAccessibleFolders = self.txtNonAccessibleFolders.Text
-                self.Close()
 
                         # # # Start of script  # # #
 
