@@ -1,0 +1,23 @@
+Updated 18/04/2018 by Matthew KELLY
+
+
+0. FFMPEG.exe must be located in the following location on the same PC and in the root. i.e. C:\FFMPEG.exe
+1. Export a CSV file containing what you want from UFED Cellebrite, but only uses and must include Category and MD5 as these are used by the script.
+(1b. Can also export Tag as this can be used by the script as a comment)
+2. Open file download inside UFED Physical Examiner.
+3. Cause script to run by selected Python -> Run Script...
+4. This will cause the selection screen to be displayed. 
+(File and Folder Dialog boxes cannot be displayed from UFED Cellebrite as it is a Sandboxed environment)
+5. Enter the:
+ - full folder and filepath of CSV file including extension
+ - Folder intended for Report to go. Note this must be a folder that does not exist as the script will create the folder. 
+ - Enter the intended name for the report(s)
+ - An option to create one large report or individual reports for each category is available from selection box
+6. THe script will run for Images first and subsequently Videos.
+7. Once completed check the HTML report and copy and paste folder locations relevant to the following user choice...
+ - Accessible. e.g. Downloads, DCIM
+ - Application Specific. e.g. android.com/WhatsApp
+ - Non-accessible. e.g. DCIM/.thumbnails
+ - All remaining images/videos will be shown under the sub-title 'Unknown'
+8. Refresh the report and repeat step 7. until satisifed with sub-categorisation
+9. Produce report for successful conviction?
